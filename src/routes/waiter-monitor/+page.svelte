@@ -2,7 +2,7 @@
 	import Card from '../components/card.svelte';
 	import Sidebar from '../sidebar/+page.svelte';
 	import { orderedItemsStore } from '../../stores/orderedItemsStore';
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { handleButtonClick } from '../../utils/buttonHandler'; // Import the reusable function
 	import { currentInputStore } from '../../stores/currentInputStore'; // Import the store
 
@@ -10,12 +10,18 @@
 	let amountPaid = '₱0.00';
 	let isDineIn = false;
 	let isTakeOut = false;
-	let riceQuantity = 0; // Declare riceQuantity
 	let cashierName = '';
 	let staffToken: string | null = null; // Declare a variable to hold the staff_token
 	let currentTime: string;
 	let currentDay: string;
 	let isSleepActive = false; // Ensure this line exists
+
+	let debounceTimeout: NodeJS.Timeout;
+	let refreshInterval: NodeJS.Timeout;
+
+	let isFetching = false; // Flag to prevent multiple fetch calls
+
+	let tableStatus: { [key: string]: boolean } = {};
 
 	async function fetchCashierName() {
 		// Retrieve staff_token from local storage only if not already fetched
@@ -51,16 +57,26 @@
 
 	// Function to fetch orders
 	async function fetchOrders() {
+		if (isFetching) return; // Prevent multiple fetch calls
+		isFetching = true; // Set fetching flag
+
 		const response = await fetch(
 			'http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getOrders'
 		);
 		if (response.ok) {
-			const orders = await response.json();
-			orderedItemsStore.set(orders);
-			orderedItems = orders;
+			const textResponse = await response.text(); // Get response as text
+			try {
+				const orders = JSON.parse(textResponse); // Attempt to parse JSON
+				orderedItemsStore.set(orders);
+				orderedItems = orders; // Update the orderedItems state
+			} catch (error) {
+				console.error('Failed to parse JSON:', error, 'Response:', textResponse);
+			}
 		} else {
-			console.error('Failed to fetch orders');
+			console.error('Failed to fetch orders:', response.statusText);
 		}
+
+		isFetching = false; // Reset fetching flag
 	}
 
 	function updateTime() {
@@ -79,20 +95,21 @@
 	onMount(() => {
 		fetchMenu();
 		fetchOrders();
+		fetchQueuedOrders();
 		fetchCashierName(); // Automatically fetch cashier name on mount
 		// Retrieve ordered items from localStorage
 		const storedItems = localStorage.getItem('orderedItems');
 		if (storedItems) {
 			orderedItems = JSON.parse(storedItems); // Parse and set orderedItems
 		}
-		// Update orders every 1 millisecond
-		const interval = setInterval(fetchOrders, 1);
-		updateTime(); // Initial call to set the time
-		const intervalTime = setInterval(updateTime, 1000); // Update time every second
-		return () => {
-			clearInterval(interval); // Clear interval on component unmount
-			clearInterval(intervalTime); // Clear interval on component unmount
-		};
+		// Start refreshing orders every 500 ms
+		refreshInterval = setInterval(fetchOrders, 500); 
+		refreshInterval = setInterval(fetchQueuedOrders, 500); // Set interval for refreshing orders
+		fetchTableStatus();
+	});
+
+	onDestroy(() => {
+		clearInterval(refreshInterval); // Clear the interval on component destroy
 	});
 
 	let orderNumber = '';
@@ -178,7 +195,8 @@
 
 	function handlePlaceOrder() {
 		// Check if total cost is null or zero
-		if (orderedItems.length === 0 || orderedItems.reduce((total, item) => total + item.order_price, 0) === 0) {
+		if (orderedItems.length === 0 || 
+			orderedItems.reduce((total, item) => total + (item.order_price || 0), 0) === 0) { // Allow null order_price
 			showAlert('Cannot place order. Total cost is null or zero.', 'error'); // Use showAlert for
 			return; // Exit the function
 		}
@@ -191,11 +209,11 @@
 		); // Log the codes
 		
 		// Fetch the total order count from the database
-		printReceipt();
+		saveQueOrder();
 	}
 
 
-	function printReceipt() {
+	function saveQueOrder() {
 		// Prepare the receipt data
 		const receiptData = {
 			receiptNumber: parseInt(orderNumber.replace('#', '')), // Convert to integer
@@ -292,9 +310,6 @@
 			if (!saveResponse.ok) {
 				throw new Error(`Failed to save receipt: ${textResponse}`);
 			}
-
-			const data = JSON.parse(textResponse); // Parse the text response as JSON
-			console.log('Receipt saved successfully:', data);
 			// Show success alert
 			showAlert('Order Success', 'success'); // Call showAlert with success type
 		});
@@ -322,7 +337,7 @@
 			localStorage.setItem('staff_token', staffToken); // Restore staff_token
 		}
 
-		window.location.reload();
+		// window.location.reload(); // Removed the refresh call
 	}
 
 	function showAlert(message: string, type: string) {
@@ -563,7 +578,7 @@
 			alert('Please enter a valid 6-digit code.');
 		}
 
-		window.location.reload();
+		// window.location.reload(); // Removed the refresh call
 	}
 
 	function closeCodePopup() {
@@ -604,9 +619,14 @@
 		}
 	}
 
-	onMount(() => {
-		fetchQueuedOrders();
-	});
+	async function fetchTableStatus() {
+		const response = await fetch('http://localhost/kaperustiko-possystem/backend/modules/check_tables.php');
+		if (response.ok) {
+			tableStatus = await response.json();
+		} else {
+			console.error('Failed to fetch table status');
+		}
+	}
 </script>
 
 <div class="flex h-screen">
@@ -687,12 +707,13 @@
 				<label for="tableNumber" class="block text-gray-700">Table Number:</label>
 				<select id="tableNumber" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200">
 					<option value="">Select Table Number</option>
-					<option value="1">Table 1</option>
-					<option value="2">Table 2</option>
-					<option value="3">Table 3</option>
-					<option value="4">Table 4</option>
-					<option value="5">Table 5</option>
-					<!-- Add more options as needed -->
+					{#each Array(21) as _, index}
+						<option value={index + 1} class={tableStatus[index + 1] ? 'bg-red-500' : ''} disabled={tableStatus[index + 1]}>
+							Table {index + 1}
+						</option>
+						
+					{/each}
+					<option>Take Out</option>
 				</select>
 			</div>
 			<div class="mb-4 max-h-full w-full flex-grow space-y-2 overflow-y-auto">
@@ -778,16 +799,17 @@
                         Take Out
                     </button>
         
-                    {#each ['Place Order', 'Void'] as key, index}
+                    {#each ['Void', 'Save Order'] as key, index}
                         <button
                             on:click={() => {
                                 if (key === 'Void') {
                                     // Handle void action
                                     voidOrder(index);
-                                } else if (key === 'Place Order') {
-                                    // Handle place order action
-                                    handlePlaceOrder();
+                                } else if (key === 'Save Order') {
+                                    // Handle save order action
+									handlePlaceOrder();
                                 }
+
                                 handleButtonClick(
                                     key,
                                     index,
@@ -810,7 +832,7 @@
                                 });
                             }}
                             class="col-span-2 rounded-lg py-2 font-bold text-white transition duration-200 
-                                   {key === 'Place Order' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-red-600 hover:bg-red-700'}"
+                                   {key === 'Save Order' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-red-600 hover:bg-red-700'}"
                         >
                             {key}
                         </button>

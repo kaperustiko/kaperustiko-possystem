@@ -5,7 +5,7 @@
     interface OrderItem {
         item: any; // Replace 'any' with the actual type if known
         table_number: number;
-        total_order: number;
+        que_order_no: number;
         items_ordered: string;
         order_status: string;
     }
@@ -59,10 +59,10 @@
     <div class="column pending w-full md:w-1/3 bg-white mx-2 my-4 p-6 rounded-lg shadow-lg border border-gray-300 hover:shadow-xl transition-shadow duration-300 overflow-auto">
         <h2 class="text-2xl font-bold mb-4 text-gray-800">Pending</h2>
         <div class="space-y-2">
-            {#each pendingItems as { item, table_number, total_order, items_ordered }}
+            {#each pendingItems as { item, table_number, que_order_no, items_ordered }}
                 <div class="card p-4 bg-gray-100 rounded-lg shadow hover:bg-gray-200 transition-colors duration-300 border border-gray-300">
                     <p class="text-gray-600">Table No: <span class="font-medium">{table_number}</span></p>
-                    <p class="text-gray-600">Order No: <span class="font-medium">{total_order}</span></p>
+                    <p class="text-gray-600">Order No: <span class="font-medium">{que_order_no}</span></p>
                     <p class="text-gray-600">Order Details:</p>
                     <div class="font-medium space-y-1">
                         {#each JSON.parse(items_ordered) as item}
@@ -74,15 +74,15 @@
                     <div class="mt-4 flex space-x-2">
                         <button class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600" 
                                 on:click={() => {
-                                    console.log(`Receipt Number: ${total_order}`);
-                                    updateOrderStatus(total_order, 'pending');
+                                    console.log(`Receipt Number: ${que_order_no}`);
+                                    updateOrderStatus(que_order_no, 'pending');
                                 }}>
                             Pending
                         </button>
                         <button class="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600" 
                                 on:click={() => {
-                                    console.log(`Receipt Number: ${total_order}`);
-                                    updateOrderStatus(total_order, 'processing');
+                                    console.log(`Receipt Number: ${que_order_no}`);
+                                    updateOrderStatus(que_order_no, 'processing');
                                 }}>
                             Processing
                         </button>
@@ -94,10 +94,10 @@
     <div class="column processing w-full md:w-1/3 bg-white mx-2 my-4 p-6 rounded-lg shadow-lg border border-gray-300 hover:shadow-xl transition-shadow duration-300 overflow-auto">
         <h2 class="text-2xl font-bold mb-4 text-gray-800">Processing</h2>
         <div class="space-y-2">
-            {#each processingItems as { item, table_number, total_order, items_ordered }}
+            {#each processingItems as { item, table_number, que_order_no, items_ordered }}
                 <div class="card p-4 bg-gray-100 rounded-lg shadow hover:bg-gray-200 transition-colors duration-300 border border-gray-300">
                     <p class="text-gray-600">Table No: <span class="font-medium">{table_number}</span></p>
-                    <p class="text-gray-600">Order No: <span class="font-medium">{total_order}</span></p>
+                    <p class="text-gray-600">Order No: <span class="font-medium">{que_order_no}</span></p>
                     <p class="text-gray-600">Order Details:</p>
                     <div class="font-medium space-y-1">
                         {#each JSON.parse(items_ordered) as item}
@@ -109,15 +109,15 @@
                     <div class="mt-4 flex space-x-2">
                         <button class="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600" 
                                 on:click={() => {
-                                    console.log(`Receipt Number: ${total_order}`);
-                                    updateOrderStatus(total_order, 'processing');
+                                    console.log(`Receipt Number: ${que_order_no}`);
+                                    updateOrderStatus(que_order_no, 'processing');
                                 }}>
                             Processing
                         </button>
                         <button class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600" 
                                 on:click={() => {
-                                    console.log(`Receipt Number: ${total_order}`);
-                                    updateOrderStatus(total_order, 'done');
+                                    console.log(`Receipt Number: ${que_order_no}`);
+                                    updateOrderStatus(que_order_no, 'done');
                                 }}>
                             Done
                         </button>
@@ -129,10 +129,10 @@
     <div class="column done w-full md:w-1/3 bg-white mx-2 my-4 p-6 rounded-lg shadow-lg border border-gray-300 hover:shadow-xl transition-shadow duration-300 overflow-auto">
         <h2 class="text-2xl font-bold mb-4 text-gray-800">Done</h2>
         <div class="space-y-2">
-            {#each doneItems as { item, table_number, total_order, items_ordered }}
+            {#each doneItems as { item, table_number, que_order_no, items_ordered }}
                 <div class="card p-4 bg-gray-100 rounded-lg shadow hover:bg-gray-200 transition-colors duration-300 border border-gray-300">
                     <p class="text-gray-600">Table No: <span class="font-medium">{table_number}</span></p>
-                    <p class="text-gray-600">Order No: <span class="font-medium">{total_order}</span></p>
+                    <p class="text-gray-600">Order No: <span class="font-medium">{que_order_no}</span></p>
                     <p class="text-gray-600">Order Details:</p>
                     <div class="font-medium space-y-1">
                         {#each JSON.parse(items_ordered) as item}

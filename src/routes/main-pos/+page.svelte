@@ -8,13 +8,13 @@
 
 	let cardData: MenuItem[] = [];
 	let amountPaid = '₱0.00';
-	let isDineIn = false;
-	let isTakeOut = false;
-	let riceQuantity = 0; // Declare riceQuantity
 	let cashierName = '';
 	let staffToken: string | null = null; // Declare a variable to hold the staff_token
 	let currentTime: string;
 	let currentDay: string;
+	let orderedItems: OrderedItem[] = []; // Declare and initialize orderedItems
+	let isTakeOut = false; // Declare and initialize isTakeOut
+	let isDineIn = false; // Declare and initialize isDineIn
 
 	async function fetchCashierName() {
 		// Retrieve staff_token from local storage only if not already fetched
@@ -35,31 +35,9 @@
 		}
 	}
 
-	async function fetchMenu() {
-		const response = await fetch(
-			'http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getMenu'
-		);
-		if (response.ok) {
-			cardData = await response.json();
-		} else {
-			console.error('Failed to fetch menu items');
-		}
-	}
-
-	let orderedItems: OrderedItem[] = [];
 
 	// Function to fetch orders
-	async function fetchOrders() {
-		const response = await fetch(
-			'http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getOrders'
-		);
-		if (response.ok) {
-			const orders = await response.json();
-			orderedItemsStore.set(orders);
-			orderedItems = orders;
-		} else {
-			console.error('Failed to fetch orders');
-		}
+	async function fetchQueOrders() {
 	}
 
 	function updateTime() {
@@ -76,65 +54,22 @@
 	}
 
 	onMount(() => {
-		fetchMenu();
-		fetchOrders();
+		fetchQueOrders();
 		fetchCashierName(); // Automatically fetch cashier name on mount
-		// Retrieve ordered items from localStorage
-		const storedItems = localStorage.getItem('orderedItems');
-		if (storedItems) {
-			orderedItems = JSON.parse(storedItems); // Parse and set orderedItems
-		}
-		// Update orders every 500 milliseconds
-		const interval = setInterval(fetchOrders, 500);
 		updateTime(); // Initial call to set the time
 		const intervalTime = setInterval(updateTime, 1000); // Update time every second
 		return () => {
-			clearInterval(interval); // Clear interval on component unmount
 			clearInterval(intervalTime); // Clear interval on component unmount
 		};
 	});
 
 	let orderNumber = '';
-	let totalCost = '₱00.00';
 	let selectedCategory = 'All';
 	let payment = '';
-	let quantity = 1;
 	let isPopupVisible = false;
-	let isVariationVisible = false;
-	let selectedItem: MenuItem | null = null;
-	let selectedItemDetails: {
-		title: string;
-		price: string;
-		size: string;
-		quantity: number;
-		addons: string[];
-	} | null = null;
 
-	type OrderedItem = {
-		order_name: string;
-		order_name2: string;
-		order_price: number;
-		order_size: string;
-		order_quantity: number;
-		order_addons: string;
-		order_addons_price: number;
-		order_addons2: string;
-		order_addons_price2: number;
-		order_addons3: string;
-		order_addons_price3: number;
-		basePrice: number;
-		code: string;
-	};
 
-	let selectedAddons: string[] = [];
-	let displayedPrice = selectedItem
-		? formatPrice(
-				quantity *
-					(parseFloat((selectedItem as MenuItem).price1.replace('₱', '').replace(',', '')) +
-						parseFloat(calculateAddonsPrice(selectedAddons).replace('₱', '').replace(',', '')))
-			)
-		: '';
-	let selectedSize = 'Regular';
+
 	let isCodePopupVisible = false;
 	let voidIndex: number | null = null;
 	let inputCode = '';
@@ -160,175 +95,11 @@
 		payment = '';
 	}
 
-	function handleEnter() {
-		alert(`Payment submitted: ₱${payment}`);
-		payment = '';
-	}
-
-	function increaseQuantity() {
-		quantity += 1;
-	}
-
-	function decreaseQuantity() {
-		if (quantity > 0) {
-			quantity -= 1;
-		}
-	}
-
-	fetch('http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getTotalOrders')
-		.then((response) => response.json())
-		.then((data) => {
-			orderNumber = `#${data.total_order.toString().padStart(2, '0')}`; // Set order number based on fetched data
-			console.log('Order Number:', orderNumber); // Log the order number
-		})
-		.catch((error) => {
-			console.error('Failed to fetch total orders:', error);
-		});
-
-	function handlePlaceOrder() {
-		// Fetch cashier name when place order is clicked
-		fetchCashierName(); // Call to fetch cashier name
-		// Log the codes of all ordered items
-		console.log(
-			'Ordered Item Codes:',
-			orderedItems.map((item) => item.code)
-		); // Log the codes
-		isPopupVisible = true;
-		// Fetch the total order count from the database
-	}
-
 	function closePopup() {
 		isPopupVisible = false;
-		isVariationVisible = false;
 	}
 
 	function printReceipt() {
-		// Prepare the receipt data
-		const receiptData = {
-			receiptNumber: parseInt(orderNumber.replace('#', '')), // Convert to integer
-			date: new Date().toLocaleDateString(),
-			time: new Date().toLocaleTimeString(),
-			cashierName: cashierName,
-			itemsOrdered: orderedItems.map((item) => ({
-				order_name: item.order_name,
-				order_name2: item.order_name2,
-				order_quantity: 'x' + item.order_quantity,
-				order_size: item.order_size,
-				order_addons: item.order_addons !== 'None' ? item.order_addons : undefined, // Save order_addons
-				order_addons_price: item.order_addons_price || 0, // Save order_addons_price
-				order_addons2: item.order_addons2 !== 'None' ? item.order_addons2 : undefined, // Save order_addons2
-				order_addons_price2: item.order_addons_price2 || 0, // Save order_addons_price2
-				order_addons3: item.order_addons3 !== 'None' ? item.order_addons3 : undefined, // Save order_addons3
-				order_addons_price3: item.order_addons_price3 || 0 // Save order_addons_price3
-			})),
-			totalAmount: Math.round(
-				orderedItems.reduce(
-					(total, item) =>
-						total + parseFloat(item.order_price.toString().replace('₱', '').replace(',', '')),
-					0
-				)
-			), // Convert to integer
-			amountPaid: Math.round(parseFloat(payment.replace('₱', '').replace(',', ''))), // Convert to integer
-			change:
-				orderedItems.length > 0 && payment
-					? Math.round(
-							parseFloat(payment.replace('₱', '').replace(',', '')) -
-								orderedItems.reduce(
-									(total, item) =>
-										total +
-										parseFloat(item.order_price.toString().replace('₱', '').replace(',', '')),
-									0
-								)
-						) // Convert to integer
-					: 0, // Default to 0
-			order_take: isDineIn ? 'Dine In' : 'Take Out'
-		};
-
-		// Now delete all orders before saving the receipt
-		// Call updateQuantity for each ordered item
-		orderedItems.forEach((item) => {
-			const code = item.code;
-			console.log('Sending code to PHP:', code); // Log the code being sent
-			// Prioritize deleting quantity before saving receipt
-			fetch(`http://localhost/kaperustiko-possystem/backend/qty_data.php?code=${code}&order_quantity=${item.order_quantity}`, {
-				method: 'GET'
-			})
-				.then((response) => response.json())
-				.then((data) => {
-					if (data.status === 'success') {
-						console.log(data.message); // Log success message
-						fetchOrders(); // Refresh orders to reflect updated quantities
-					} else {
-						console.error(data.message); // Log error message
-					}
-				})
-				.catch((error) => {
-					console.error('Error updating quantity:', error);
-				});
-		});
-
-		// Now delete all orders before saving the receipt
-		fetch(
-			'http://localhost/kaperustiko-possystem/backend/modules/delete.php?action=deleteAllOrders',
-			{
-				method: 'DELETE' // Assuming you have a DELETE endpoint
-			}
-		).then(async (deleteResponse) => {
-			if (!deleteResponse.ok) {
-				const text = await deleteResponse.text();
-				throw new Error(`Failed to delete orders: ${text}`);
-			}
-			console.log('All orders deleted successfully');
-
-			// Send data to the server to save the receipt
-			const saveResponse = await fetch(
-				'http://localhost/kaperustiko-possystem/backend/modules/insert.php?action=save_receipt',
-				{
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json'
-					},
-					body: JSON.stringify(receiptData)
-				}
-			);
-
-			const textResponse = await saveResponse.text(); // Get the response as text
-			console.log('Response from save_receipt.php:', textResponse); // Log the response
-
-			if (!saveResponse.ok) {
-				throw new Error(`Failed to save receipt: ${textResponse}`);
-			}
-
-			const data = JSON.parse(textResponse); // Parse the text response as JSON
-			console.log('Receipt saved successfully:', data);
-			// Show success alert
-			showAlert('Order Success', 'success'); // Call showAlert with success type
-		});
-
-		// Reset the receipt data
-		orderNumber = '#01';
-		totalCost = '₱00.00';
-		selectedCategory = 'All';
-		payment = '';
-		quantity = 1;
-		isPopupVisible = false;
-		isVariationVisible = false;
-		selectedItem = null;
-		selectedItemDetails = null;
-		orderedItems = [];
-		selectedSize = 'Regular';
-		selectedAddons = [];
-		voidIndex = null;
-		inputCode = '123456';
-
-		// Reset all numbers in local storage, except for staff_token
-		const staffToken = localStorage.getItem('staff_token'); // Preserve staff_token
-		localStorage.clear(); // Clear all numbers in local storage
-		if (staffToken) {
-			localStorage.setItem('staff_token', staffToken); // Restore staff_token
-		}
-
-		window.location.reload();
 	}
 
 	function showAlert(message: string, type: string) {
@@ -355,224 +126,43 @@
 		qty: string;
 	};
 
-	function formatPrice(price: number): string {
-		return price.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-	}
-
-	function handleAdd(item: MenuItem) {
-		selectedItem = item;
-		console.log('Selected Item Details:', selectedItem);
-		isVariationVisible = true;
-	}
-
-	function handleOrder(item: MenuItem) {
-		selectedItem = item;
-		const addonsPrice = calculateAddonsPrice(selectedAddons); // Calculate addons price
-		const basePrice =
-			selectedSize === 'Regular'
-				? parseFloat(item.price1.replace('₱', '').replace(',', ''))
-				: selectedSize === 'Large'
-					? parseFloat(item.price2.replace('₱', '').replace(',', ''))
-					: parseFloat(item.price3.replace('₱', '').replace(',', '')); // Adjust for Family size
-
-		const totalAddonsPrice = selectedAddons.reduce((total, addon) => {
-			const addonPrice =
-				parseFloat(calculateAddonsPrice([addon]).replace('₱', '').replace(',', '')) || 0; // Calculate price for each addon
-			return total + addonPrice; // Sum up the prices
-		}, 0); // Initialize total to 0
-
-		const newItem = {
-			title: item.title1,
-			price: formatPrice(quantity * (basePrice + totalAddonsPrice)), // Correctly calculate total price
-			originalPrice: formatPrice(basePrice),
-			size: selectedSize,
-			quantity: quantity,
-			addons: selectedAddons,
-			basePrice: basePrice, // Add basePrice to the newItem
-			addonsPrices: selectedAddons
-				.map((addon) => {
-					const price = calculateAddonsPrice([addon]); // Get individual addon price
-					return `${addon} - ₱${price}`; // Format as "Addon - Price"
-				})
-				.join(', '), // Join the prices into a single string
-			code: item.code
-		};
-		orderedItems = [...orderedItems];
-
-		// Prepare data to send to the server
-		type OrderData = {
-			order_name: string;
-			order_name2: string;
-			order_quantity: number;
-			order_size: string;
-			order_price: number;
-			order_image: string;
-			order_addons?: string; // Add optional properties for addons
-			order_addons_price?: number;
-			order_addons2?: string;
-			order_addons_price2?: number;
-			order_addons3?: string;
-			order_addons_price3?: number;
-			basePrice: number; // Add basePrice to the OrderData type
-			code: string;
-		};
-
-		const currentAddonsPrice = calculateAddonsPrice(selectedAddons); // Renamed variable
-		const totalOrderPrice = basePrice * quantity + totalAddonsPrice; // Calculate total price
-
-		// Update the orderData to include the correct order_price
-		const orderData: OrderData = {
-			order_name: item.title1,
-			order_name2: item.title2,
-			order_quantity: quantity,
-			order_size: selectedSize,
-			order_price: totalOrderPrice, // Calculate total price as a number
-			order_image: item.image,
-			basePrice: basePrice, // Change this line to reflect the original price
-			// Add-ons handling
-			order_addons: selectedAddons.length > 0 ? selectedAddons[0] : 'None',
-			order_addons_price:
-				selectedAddons.length > 0
-					? parseFloat(calculateAddonsPrice([selectedAddons[0]]).replace('₱', '').replace(',', ''))
-					: 0,
-			order_addons2: selectedAddons.length > 1 ? selectedAddons[1] : 'None',
-			order_addons_price2:
-				selectedAddons.length > 1
-					? parseFloat(calculateAddonsPrice([selectedAddons[1]]).replace('₱', '').replace(',', ''))
-					: 0,
-			order_addons3: selectedAddons.length > 2 ? selectedAddons[2] : 'None',
-			order_addons_price3:
-				selectedAddons.length > 2
-					? parseFloat(calculateAddonsPrice([selectedAddons[2]]).replace('₱', '').replace(',', ''))
-					: 0,
-			code: item.code
-		};
-
-		console.log('Order Data:', orderData); // Log the order data
-
-		// Save the order to the database
-		fetch('http://localhost/kaperustiko-possystem/backend/modules/insert.php?action=save_order', {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json'
-			},
-			body: JSON.stringify(orderData)
-		})
-			.then((response) => {
-				if (!response.ok) {
-					return response.text().then((text) => {
-						throw new Error(text);
-					});
-				}
-				return response.json();
-			})
-			.then((data) => {
-				console.log(data.message);
-			})
-			.catch((error) => {
-				console.error('Error saving order:', error);
-			});
-
-		fetchOrders();
-
-		selectedItem = null;
-		selectedSize = 'Regular';
-		selectedAddons = [];
-		quantity = 1; // Reset quantity to 1
-		closePopup();
-
-		// Save the order to localStorage
-		localStorage.setItem('orderedItems', JSON.stringify(orderedItems)); // Store orderedItems in localStorage
-	}
-
-	function calculateAddonsPrice(addons: string[]): string {
-		// Define prices for each addon
-		const addonPrices: { [key: string]: number } = {
-			Sugar: 5,
-			Bobba: 10,
-			Milk: 7,
-			'Extra Cheese': 15,
-			Bacon: 20,
-			Olives: 10,
-			Rice: 10
-		};
-
-		// Return a string of addon prices
-		return addons.map((addon) => `${addonPrices[addon] || 0}`).join(', ');
-	}
-
-	function selectSize(size: string) {
-		selectedSize = size;
-		if (selectedItem) {
-			if (size === 'Regular' || size === '0.25L') {
-				displayedPrice = formatPrice(
-					quantity * parseFloat(selectedItem.price1.replace('₱', '').replace(',', ''))
-				);
-			} else if (size === 'Large' || size === '0.33L') {
-				displayedPrice = formatPrice(
-					quantity * parseFloat(selectedItem.price2.replace('₱', '').replace(',', ''))
-				);
-			} else if (size === 'Family' || size === '1.5L') {
-				displayedPrice = formatPrice(
-					quantity * parseFloat(selectedItem.price3.replace('₱', '').replace(',', ''))
-				);
-			}
-		}
-	}
-
-	$: {
-		if (selectedItem) {
-			let price = 0;
-			if (selectedSize === 'Regular' || selectedSize === '0.25L') {
-				price = parseFloat(selectedItem.price1.replace('₱', '').replace(',', ''));
-			} else if (selectedSize === 'Large' || selectedSize === '0.33L') {
-				price = parseFloat(selectedItem.price2.replace('₱', '').replace(',', ''));
-			} else if (selectedSize === 'Family' || selectedSize === '1.5L') {
-				price = parseFloat(selectedItem.price3.replace('₱', '').replace(',', ''));
-			}
-			displayedPrice = formatPrice(quantity * price);
-		}
-	}
-
 	function voidOrder(index: number) {
 		voidIndex = index;
 		isCodePopupVisible = true;
 	}
 
-	function confirmVoid() {
-		if (inputCode.length === 6) {
-			const orderToVoid = orderedItems[voidIndex!]; // Get the order to void
-			orderedItems.splice(voidIndex!, 1); // Remove from local array
-			localStorage.setItem('orderedItems', JSON.stringify(orderedItems)); // Update localStorage after voiding
-
-			// Send request to backend to delete the order
-			fetch(
-				`http://localhost/kaperustiko-possystem/backend/modules/delete.php?action=voidOrder&order_name=${encodeURIComponent(orderToVoid.order_name)}`,
-				{
-					method: 'DELETE'
-				}
-			)
-				.then((response) => response.json())
-				.then((data) => {
-					console.log('Order voided:', data);
-				})
-				.catch((error) => {
-					console.error('Error voiding order:', error);
-				});
-
-			voidIndex = null;
-			inputCode = '';
-			isCodePopupVisible = false;
-		} else {
-			alert('Please enter a valid 6-digit code.');
-		}
-
-		window.location.reload();
-	}
-
 	function closeCodePopup() {
 		isCodePopupVisible = false;
 		inputCode = '';
+	}
+
+	let cards = Array.from({ length: 21 }, (_, index) => ({
+		title: `Card ${index + 1}`,
+		description: `Description for Card ${index + 1}`
+	}));
+
+	type OrderedItem = {
+		code: string;
+		order_name: string;
+		order_name2?: string;
+		order_quantity: number;
+		order_price: string;
+		order_size: string;
+		basePrice: number;
+		order_addons?: string;
+		order_addons_price?: string;
+		order_addons2?: string;
+		order_addons_price2?: string;
+		order_addons3?: string;
+		order_addons_price3?: string;
+	};
+
+	function handlePlaceOrder() {
+		// Implement the
+	}
+
+	function confirmVoid() {
+		// Implement the
 	}
 </script>
 
@@ -580,10 +170,10 @@
 	<Sidebar />
 	<div class="flex flex-grow overflow-hidden bg-gray-100">
 		<div class="flex-start w-full overflow-auto p-4">
-			<div class="mb-4 flex space-x-4">
-				{#each ['All', 'Beverages', 'Food', 'Dessert', 'Coffee', 'Tea', 'Soda', 'Sandwich', 'Pasta', 'Burger', 'Ulam', 'Rice'] as category}
+			<div class="mb-4 flex space-x-4 w-full">
+				{#each ['All', 'Occupied', 'Available', 'Reserved', 'Not Paid', 'Take Out'] as category}
 					<button
-						class="rounded-md px-6 py-2 font-bold text-black"
+						class="rounded-md px-6 py-2 font-bold text-black w-full"
 						class:bg-cyan-950={selectedCategory === category}
 						class:text-white={selectedCategory === category}
 						class:bg-white={selectedCategory !== category}
@@ -597,47 +187,27 @@
 
 			<div class="mb-4 flex items-center justify-between font-bold text-black">
 				{#if selectedCategory === 'All'}
-					<p>Display All Menu</p>
-				{:else if selectedCategory === 'Beverages'}
-					<p>Display Beverages Menu</p>
-				{:else if selectedCategory === 'Food'}
-					<p>Display Food Menu</p>
-				{:else if selectedCategory === 'Dessert'}
-					<p>Display Dessert Menu</p>
-				{:else if selectedCategory === 'Coffee'}
-					<p>Display Coffee Menu</p>
-				{:else if selectedCategory === 'Tea'}
-					<p>Display Tea Menu</p>
-				{:else if selectedCategory === 'Soda'}
-					<p>Display Soda Menu</p>
-				{:else if selectedCategory === 'Sandwich'}
-					<p>Display Sandwich Menu</p>
-				{:else if selectedCategory === 'Ulam'}
-					<p>Display Ulam Menu</p>
-				{:else if selectedCategory === 'Rice'}
-					<p>Display Rice Menu</p>
-				{:else if selectedCategory === 'Desserts'}
-					<p>Display Desserts Menu</p>
+					<p>Display All Tables</p>
+				{:else if selectedCategory === 'Occupied'}
+					<p>Display Occupied Tables</p>
+				{:else if selectedCategory === 'Available'}
+					<p>Display Available Tables</p>
+				{:else if selectedCategory === 'Reserved'}
+					<p>Display Reserved Tables</p>
+				{:else if selectedCategory === 'Not Paid'}
+					<p>Display Not Paid Tables</p>
+				{:else if selectedCategory === 'Take Out'}
+					<p>Display Take Out Tables</p>
 				{/if}
 				<p class="mr-4">{currentDay} - {currentTime}</p>
 			</div>
 
 			<div class="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3">
-				{#each cardData.filter((item) => selectedCategory === 'All' || item.label === selectedCategory || item.label2 === selectedCategory) as { code, title1, title2, price1, price2, price3, image, menu_no, label, label2, qty }}
-					<Card
-						{code}
-						{title1}
-						{title2}
-						{price1}
-						{price2}
-						{price3}
-						{label}
-						{label2}
-						{image}
-						{menu_no}
-						{qty}
-						onAdd={handleAdd}
-					/>
+				{#each cards as card}
+					<div class="border p-4 rounded shadow">
+						<h3 class="font-bold">{card.title}</h3>
+						<p>{card.description}</p>
+					</div>
 				{/each}
 			</div>
 		</div>
@@ -659,7 +229,7 @@
 								<p class="text-gray-600">Code: {item.code}</p>
 							</div>
 							<div class="flex items-center justify-between">
-								<p class="font-semibold text-gray-800">{item.order_name} x {item.order_quantity}</p>
+								<p class="font-semibold text-gray-800">{item.order_name} x {item.order_quantity} {item.order_size}</p>
 								<p class="text-right font-semibold text-gray-800">₱{item.order_price}.00</p>
 							</div>
 							<div class="flex items-center justify-between">
@@ -738,30 +308,7 @@
 			</div>
 
 			<div class="grid h-[400px] w-full grid-cols-4 gap-2">
-				<button
-					class="col-span-2 rounded py-2 font-bold text-gray-800 {isDineIn
-						? 'bg-blue-500 text-white'
-						: 'bg-gray-300'}"
-					on:click={() => {
-						isDineIn = true;
-						isTakeOut = false;
-					}}
-				>
-					Dine In
-				</button>
-
-				<button
-					class="col-span-2 rounded py-2 font-bold text-gray-800 {isTakeOut
-						? 'bg-blue-500 text-white'
-						: 'bg-gray-300'}"
-					on:click={() => {
-						isDineIn = false;
-						isTakeOut = true;
-					}}
-				>
-					Take Out
-				</button>
-
+	
 				{#each ['7', '8', '9', '⌫', '4', '5', '6', 'Clr', '1', '2', '3', 'Void', '0', '00', 'Place Order'] as key, index}
 					<button
 						on:click={() => {
@@ -923,142 +470,7 @@
 	</div>
 {/if}
 
-{#if isVariationVisible}
-	<div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70">
-		<div class="w-full max-w-md rounded-lg bg-white p-8 shadow-lg">
-			<h2 class="mb-6 text-center text-2xl font-bold">
-				Add {selectedItem?.title1}
-				{selectedItem?.title2}
-			</h2>
-			<p class="mb-6 text-center text-lg">
-				Price: ₱{displayedPrice} (Add-ons: ₱{calculateAddonsPrice(selectedAddons)})
-			</p>
-			{#if selectedItem?.image}
-				<img
-					src={`/foods/${selectedItem.image}`}
-					alt={selectedItem.title1}
-					class="mb-4 h-[400px] w-full rounded"
-				/>
-			{/if}
 
-			<label for="size" class="mb-2 block text-sm font-medium">Size:</label>
-			<div class="mb-6 flex w-full space-x-4">
-				{#if selectedItem?.label === 'Soda' || selectedItem?.label2 === 'Soda'}
-					<button
-						on:click={() => selectSize('0.25L')}
-						class="flex-1 rounded-md border border-gray-300 p-3 {selectedSize === '0.25L'
-							? 'bg-blue-500 text-white'
-							: ''}">0.25L</button
-					>
-					<button
-						on:click={() => selectSize('0.33L')}
-						class="flex-1 rounded-md border border-gray-300 p-3 {selectedSize === '0.33L'
-							? 'bg-blue-500 text-white'
-							: ''}">0.33L</button
-					>
-					<button
-						on:click={() => selectSize('1.5L')}
-						class="flex-1 rounded-md border border-gray-300 p-3 {selectedSize === '1.5L'
-							? 'bg-blue-500 text-white'
-							: ''}">1.5L</button
-					>
-				{:else}
-					<button
-						on:click={() => selectSize('Regular')}
-						class="flex-1 rounded-md border border-gray-300 p-3 {selectedSize === 'Regular'
-							? 'bg-blue-500 text-white'
-							: ''}">Regular</button
-					>
-					<button
-						on:click={() => selectSize('Large')}
-						class="flex-1 rounded-md border border-gray-300 p-3 {selectedSize === 'Large'
-							? 'bg-blue-500 text-white'
-							: ''}">Large</button
-					>
-					<button
-						on:click={() => selectSize('Family')}
-						class="flex-1 rounded-md border border-gray-300 p-3 {selectedSize === 'Family'
-							? 'bg-blue-500 text-white'
-							: ''}">Family</button
-					>
-				{/if}
-			</div>
-
-			<label for="addons" class="mb-2 block text-sm font-medium">Add-ons:</label>
-			<div class="mb-6">
-				{#if selectedItem?.label === 'Tea' || selectedItem?.label2 === 'Tea'}
-					<label class="mb-4 block">
-						<input type="checkbox" bind:group={selectedAddons} value="Sugar" class="mr-2 h-6 w-6" />
-						Sugar - ₱5
-					</label>
-					<label class="mb-4 block">
-						<input type="checkbox" bind:group={selectedAddons} value="Bobba" class="mr-2 h-6 w-6" />
-						Bobba - ₱10
-					</label>
-					<label class="mb-4 block">
-						<input type="checkbox" bind:group={selectedAddons} value="Milk" class="mr-2 h-6 w-6" /> Milk
-						- ₱7
-					</label>
-				{:else if selectedItem?.label === 'Pasta' || selectedItem?.label2 === 'Pasta'}
-					<label class="mb-4 block">
-						<input
-							type="checkbox"
-							bind:group={selectedAddons}
-							value="Extra Cheese"
-							class="mr-2 h-6 w-6"
-						/> Extra Cheese - ₱15
-					</label>
-					<label class="mb-4 block">
-						<input type="checkbox" bind:group={selectedAddons} value="Bacon" class="mr-2 h-6 w-6" />
-						Bacon - ₱20
-					</label>
-					<label class="mb-4 block">
-						<input
-							type="checkbox"
-							bind:group={selectedAddons}
-							value="Olives"
-							class="mr-2 h-6 w-6"
-						/> Olives - ₱10
-					</label>
-				{:else if selectedItem?.label === 'Soda' || selectedItem?.label2 === 'Soda'}
-					<!-- No add-ons for Soda -->
-				{:else if selectedItem?.label === 'Ulam' || selectedItem?.label2 === 'Ulam'}
-					<!-- No add-ons for Ulam -->
-				{/if}
-			</div>
-
-			<label for="quantity" class="mb-2 block text-sm font-medium">Quantity:</label>
-			<div class="mb-6 flex justify-between">
-				<button on:click={decreaseQuantity} class="flex-1 rounded-md border border-gray-300 p-3"
-					>-</button
-				>
-				<input
-					type="number"
-					id="quantity"
-					bind:value={quantity}
-					min="1"
-					class="mx-2 block w-full rounded-md border border-gray-300 p-3 text-center"
-				/>
-				<button on:click={increaseQuantity} class="flex-1 rounded-md border border-gray-300 p-3"
-					>+</button
-				>
-			</div>
-
-			<div class="flex justify-between">
-				<button
-					on:click={closePopup}
-					class="rounded-md bg-red-500 px-6 py-3 text-white transition hover:bg-red-600"
-					>Cancel</button
-				>
-				<button
-					on:click={() => selectedItem && handleOrder(selectedItem)}
-					class="rounded-md bg-blue-500 px-6 py-3 text-white transition hover:bg-blue-600"
-					>Add to Order</button
-				>
-			</div>
-		</div>
-	</div>
-{/if}
 
 {#if isCodePopupVisible}
 	<div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70">

@@ -118,7 +118,7 @@ function getOrders($conn)
 // Function to get orders
 function getQueOrders($conn)
 {
-    $sql = "SELECT * FROM total_sales";
+    $sql = "SELECT * FROM que_orders";
     $result = $conn->query($sql);
     $orders = [];
     if ($result->num_rows > 0) {
@@ -255,6 +255,14 @@ function getTodaySales($conn)
 function getTotalOrders($conn)
 {
     $query = "SELECT MAX(total_order) as total_order FROM total_sales";
+    $result = $conn->query($query);
+    $row = $result->fetch_assoc();
+    $row['total_order'] += 1;
+    echo json_encode($row);
+}
+function getTotalQueOrders($conn)
+{
+    $query = "SELECT MAX(total_order) as total_order FROM que_orders";
     $result = $conn->query($query);
     $row = $result->fetch_assoc();
     $row['total_order'] += 1;

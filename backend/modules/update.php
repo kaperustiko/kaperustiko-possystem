@@ -14,7 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Validate input
     if ($receipt_number && $order_status) {
         // Prepare the SQL statement
-        $stmt = $conn->prepare("UPDATE total_sales SET order_status = ? WHERE total_order = ?");
+        $stmt = $conn->prepare("UPDATE que_orders SET order_status = ? WHERE que_order_no = ?");
         $stmt->bind_param("si", $order_status, $receipt_number);
 
         // Execute the statement
