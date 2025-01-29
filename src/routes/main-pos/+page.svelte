@@ -15,6 +15,8 @@
 	let orderedItems: OrderedItem[] = []; // Declare and initialize orderedItems
 	let isTakeOut = false; // Declare and initialize isTakeOut
 	let isDineIn = false; // Declare and initialize isDineIn
+	let queuedOrders: OrderedItem[] = []; // Declare a variable to hold the fetched orders
+	let orders: any[] = []; // Declare a variable to hold fetched orders
 
 	async function fetchCashierName() {
 		// Retrieve staff_token from local storage only if not already fetched
@@ -35,9 +37,25 @@
 		}
 	}
 
-
 	// Function to fetch orders
 	async function fetchQueOrders() {
+		const response = await fetch('http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getQueOrders');
+		if (response.ok) {
+			const orders = await response.json();
+			console.log('Fetched queue orders:', orders); // Log the fetched queue orders
+			queuedOrders = orders; // Store the fetched orders in the state variable
+		} else {
+			console.error('Failed to fetch queue orders:', response.statusText);
+		}
+	}
+
+	async function fetchOrders() {
+		const response = await fetch('http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getQueOrders');
+		if (response.ok) {
+			orders = await response.json(); // Store the fetched orders
+		} else {
+			console.error('Failed to fetch orders:', response.statusText);
+		}
 	}
 
 	function updateTime() {
@@ -56,6 +74,7 @@
 	onMount(() => {
 		fetchQueOrders();
 		fetchCashierName(); // Automatically fetch cashier name on mount
+		fetchOrders(); // Fetch orders on component mount
 		updateTime(); // Initial call to set the time
 		const intervalTime = setInterval(updateTime, 1000); // Update time every second
 		return () => {
@@ -67,8 +86,6 @@
 	let selectedCategory = 'All';
 	let payment = '';
 	let isPopupVisible = false;
-
-
 
 	let isCodePopupVisible = false;
 	let voidIndex: number | null = null;
@@ -112,19 +129,6 @@
 		}, 3000); // Remove alert after 3 seconds
 	}
 
-	type MenuItem = {
-		menu_no: string;
-		code: string;
-		title1: string;
-		title2: string;
-		price1: string;
-		price2: string;
-		price3: string;
-		image: string;
-		label: string;
-		label2: string;
-		qty: string;
-	};
 
 	function voidOrder(index: number) {
 		voidIndex = index;
@@ -137,24 +141,27 @@
 	}
 
 	let cards = Array.from({ length: 21 }, (_, index) => ({
-		title: `Card ${index + 1}`,
-		description: `Description for Card ${index + 1}`
+		table: `${index + 1}`,
 	}));
 
 	type OrderedItem = {
-		code: string;
+		que_order_no: string;
+		receipt_number: string;
+		date: string;
+		time: string;
+		items_ordered: string;
+		total_amount: number;
+		amount_paid: number;
+		amount_change: number;
+		order_status: string;
+		table_number: string;
 		order_name: string;
 		order_name2?: string;
 		order_quantity: number;
-		order_price: string;
 		order_size: string;
 		basePrice: number;
 		order_addons?: string;
-		order_addons_price?: string;
-		order_addons2?: string;
-		order_addons_price2?: string;
-		order_addons3?: string;
-		order_addons_price3?: string;
+		order_addons_price?: number;
 	};
 
 	function handlePlaceOrder() {
@@ -163,6 +170,30 @@
 
 	function confirmVoid() {
 		// Implement the
+	}
+
+	let isCardPopupVisible = false;
+	let selectedCard: any;
+
+	function openCardPopup(card: any) {
+		isCardPopupVisible = true;
+		selectedCard = card;
+	}
+
+	function closeCardPopup() {
+		isCardPopupVisible = false;
+	}
+
+	// Function to handle checkout
+	function handleCheckOut(table: string) {
+		const orderToCheckOut = queuedOrders.find(order => order.table_number === table);
+		if (orderToCheckOut) {
+			orderedItems = JSON.parse(orderToCheckOut.items_ordered); // Add items to orderedItems
+			orderNumber = orderToCheckOut.que_order_no; // Set the order number
+			closeCardPopup(); // Close the popup after checking out
+		} else {
+			showAlert('No orders found for this table.', 'error'); // Show alert if no orders found
+		}
 	}
 </script>
 
@@ -204,16 +235,82 @@
 
 			<div class="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3">
 				{#each cards as card}
-					<div class="border p-4 rounded shadow">
-						<h3 class="font-bold">{card.title}</h3>
-						<p>{card.description}</p>
-					</div>
+					<button 
+						class={`border-2 ${orders.some(order => order.table_number === card.table) ? 'border-white bg-cyan-950 text-white' : 'border-cyan-950 bg-white text-black'} p-8 rounded-full shadow-lg flex flex-col items-center justify-center`}
+						on:click={() => {
+							if (orders.some(order => order.table_number === card.table)) {
+								openCardPopup(card); // Open popup only if the table is occupied
+							}
+						}}
+						aria-label={`Open popup for table ${card.table}`}
+					>
+						<h3 class="font-bold text-6xl"> {card.table} </h3>
+						<span class={`bg-gray-200 text-gray-500 text-xs rounded-full px-4 py-2 mt-2 ${orders.some(order => order.table_number === card.table) ? 'bg-red-500 text-white' : 'bg-green-500 text-white'}`}>
+							{orders.some(order => order.table_number === card.table) ? 'Occupied' : 'Available'}
+						</span>
+					</button>
 				{/each}
 			</div>
+
+			{#if isCardPopupVisible}
+				<div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70">
+					<div class="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
+						<h2 class="mb-4 text-center text-2xl font-bold text-gray-800">Table {selectedCard.table}</h2>
+						{#if queuedOrders.length > 0}
+								{#each queuedOrders as order}
+									{#if order.table_number === selectedCard.table}
+										<div class="border-b border-gray-300 py-2">
+											<p class="font-semibold">Order No: <span class="font-normal">{order.que_order_no}</span></p>
+											<p class="font-semibold">Receipt No: <span class="font-normal">{order.receipt_number}</span></p>
+											<p class="font-semibold">Date: <span class="font-normal">{order.date}</span></p>
+											<p class="font-semibold">Time: <span class="font-normal">{order.time}</span></p>
+											<p class="font-semibold">Items Ordered:</p>
+												{#each JSON.parse(order.items_ordered) as item}
+													<div class="flex items-center justify-between border-b border-gray-200 py-2">
+														<div class="flex-1">
+															<p class="font-normal">Name: {item.order_name} {item.order_name2}</p>
+															<p class="font-normal">Quantity: {item.order_quantity}</p>
+															<p class="font-normal">Size: {item.order_size}</p>
+														</div>
+														<div class="flex-none text-right">
+															<p class="font-normal">Base Price: ₱{item.basePrice}</p>
+															<p class="font-normal">Addons:</p>
+															{#if item.order_addons && item.order_addons_price != null && item.order_addons_price > 0}
+																<div class="flex justify-between">
+																	<p class="font-normal">{item.order_addons}</p>
+																	<p class="font-normal text-right">₱{item.order_addons_price}</p>
+																</div>
+															{/if}
+														</div>
+													</div>
+													{#if item.order_addons2}
+														<p class="font-normal">Addons 2: {item.order_addons2}</p>
+														<p class="font-normal">Addons Price 2: ₱{item.order_addons_price2}</p>
+													{/if}
+													{#if item.order_addons3}
+														<p class="font-normal">Addons 3: {item.order_addons3}</p>
+														<p class="font-normal">Addons Price 3: ₱{item.order_addons_price3}</p>
+													{/if}
+												{/each}
+											<p class="font-semibold">Total Amount: <span class="font-normal">₱{order.total_amount}</span></p>
+										</div>
+										<p class="font-semibold">Status: <span class="font-normal">{order.order_status}</span></p>
+									{/if}
+								{/each}
+						{:else}
+							<p class="text-center text-gray-600">No orders for this table.</p>
+						{/if}
+						<div class="flex justify-between mt-4">
+							<button on:click={closeCardPopup} class="rounded-md bg-red-500 px-4 py-2 w-full text-white hover:bg-red-600 transition">Close</button>
+							<button on:click={() => handleCheckOut(selectedCard.table)} class="rounded-md bg-green-500 px-4 py-2 w-full text-white hover:bg-green-600 transition">Check Out</button>
+						</div>
+					</div>
+				</div>
+			{/if}
 		</div>
 	</div>
 
-	<div class="w-[380px]">
+	<div class="w-[350px]">
 		<div
 			class="fixed right-0 top-0 flex h-full w-[350px] flex-col items-center bg-gray-100 p-4 shadow-lg"
 		>
@@ -223,43 +320,20 @@
 
 			<div class="mb-4 max-h-[400px] w-full flex-grow space-y-2 overflow-y-auto">
 				{#if orderedItems.length > 0}
-					{#each orderedItems as item, index}
-						<div class="flex flex-col rounded-lg bg-white p-4 shadow-md">
-							<div class="flex items-center justify-between">
-								<p class="text-gray-600">Code: {item.code}</p>
+					{#each orderedItems as item}
+						<div class="border rounded-lg p-4 shadow-md bg-white">
+							<p class="font-semibold">{item.order_name} {item.order_name2} {item.order_quantity}</p>
+							<div class="mb-2 flex w-full items-center justify-between border-b pb-1">
+							<p class="font-normal">{item.order_size}</p>
+							<p class="font-normal text-right">₱{item.basePrice}</p>
 							</div>
-							<div class="flex items-center justify-between">
-								<p class="font-semibold text-gray-800">{item.order_name} x {item.order_quantity} {item.order_size}</p>
-								<p class="text-right font-semibold text-gray-800">₱{item.order_price}.00</p>
-							</div>
-							<div class="flex items-center justify-between">
-								<p class="text-gray-600">Size: {item.order_size}</p>
-							</div>
-							{#if item.order_addons !== 'None'}
-								<ul class="list-disc pl-5">
-									{#if item.order_addons !== 'None'}
-										<div class="flex items-center justify-between">
-											<li class="text-gray-600">{item.order_addons}</li>
-											<p class="text-right text-gray-600">₱{item.order_addons_price}.00</p>
-										</div>
-									{/if}
-									{#if item.order_addons2 !== 'None'}
-										<div class="flex items-center justify-between">
-											<li class="text-gray-600">{item.order_addons2}</li>
-											<p class="text-right text-gray-600">₱{item.order_addons_price2}.00</p>
-										</div>
-									{/if}
-									{#if item.order_addons3 !== 'None'}
-										<div class="flex items-center justify-between">
-											<li class="text-gray-600">{item.order_addons3}</li>
-											<p class="text-right text-gray-600">₱{item.order_addons_price3}.00</p>
-										</div>
-									{/if}
-								</ul>
+							<p class="font-normal">Addons:</p>
+							{#if item.order_addons && item.order_addons_price != null && item.order_addons_price > 0}
+								<div class="flex justify-between">
+									<p class="font-normal">{item.order_addons}</p>
+									<p class="font-normal text-right">₱{item.order_addons_price}</p>
+								</div>
 							{/if}
-							<button on:click={() => voidOrder(index)} class="mt-2 text-center text-red-500"
-								>Void</button
-							>
 						</div>
 					{/each}
 				{:else}
@@ -267,43 +341,26 @@
 				{/if}
 			</div>
 
-			<div class="mt-auto w-full rounded-lg p-4 shadow-md">
-				<div class="mb-4 flex w-full items-center justify-between border-b pb-2">
-					<p class="font-semibold text-gray-700">Total Cost:</p>
-					<p class="font-bold text-gray-800">
-						₱{orderedItems
-							.reduce(
-								(total, item) =>
-									total + parseFloat(item.order_price.toString().replace('₱', '').replace(',', '')),
-								0
-							)
-							.toFixed(2)}
-					</p>
+			<div class="mt-auto w-full rounded-lg p-2 shadow-md">
+				<div class="mb-2 flex w-full items-center justify-between border-b pb-1">
+					<p class="text-sm font-semibold text-gray-700">VAT (12%):</p>
+					<p class="text-sm font-bold text-gray-800">₱{(parseFloat(payment) * 0.12).toFixed(2)}</p>
+				</div>
+				<div class="mb-2 flex w-full items-center justify-between border-b pb-1">
+					<p class="text-sm font-semibold text-gray-700">Service Charge:</p>
+					<p class="text-sm font-bold text-gray-800">₱20.00</p>
+				</div>
+				<div class="mb-2 flex w-full items-center justify-between border-b pb-1">
+					<p class="text-sm font-semibold text-gray-700">Total Cost:</p>
+					<p class="text-sm font-bold text-gray-800">₱{(parseFloat(payment) + (parseFloat(payment) * 0.12) + 20).toFixed(2)}</p>
 				</div>
 				<div class="flex justify-between">
-					<p class="text-lg">Amount Paid:</p>
-					<span class="text-lg">₱{payment || '0'}.00</span>
+					<p class="text-sm">Amount Paid:</p>
+					<span class="text-sm">₱{payment || '0'}.00</span>
 				</div>
 				<div class="flex justify-between">
-					<p class="text-lg">Change:</p>
-					<span class="text-lg"
-						>₱{orderedItems.length > 0 && payment
-							? Math.max(
-									0,
-									parseFloat(
-										(
-											parseFloat(payment.replace('₱', '').replace(',', '')) -
-											orderedItems.reduce(
-												(total, item) =>
-													total +
-													parseFloat(item.order_price.toString().replace('₱', '').replace(',', '')),
-												0
-											)
-										).toFixed(2)
-									)
-								)
-							: '0'}.00</span
-					>
+					<p class="text-sm">Change:</p>
+					<span class="text-sm">₱{(parseFloat(payment) - ((parseFloat(payment) * 0.12) + 20)).toFixed(2) || '0.00'}</span>
 				</div>
 			</div>
 
@@ -319,6 +376,8 @@
 								const currentPayment = localStorage.getItem('payment') || '';
 								localStorage.setItem('payment', currentPayment.slice(0, -1)); // Delete last number
 								console.log('Deleted last number, current value:', localStorage.getItem('payment'));
+							} else if (key === 'Void') {
+								location.reload(); // Reload the page when Void is clicked
 							} else {
 								const currentPayment = localStorage.getItem('payment') || '';
 								localStorage.setItem('payment', currentPayment + key); // Store number in local storage
@@ -361,115 +420,6 @@
 		</div>
 	</div>
 </div>
-
-{#if isPopupVisible}
-	<div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
-		<div class="rounded-lg bg-white p-8 shadow-lg">
-			<div class="mb-4 flex justify-center">
-				<img src="icon.png" alt="Restaurant Logo" class="h-24" />
-			</div>
-			<h2 class="text-center text-2xl font-bold">Kape Rustiko Restaurant</h2>
-			<p class="text-center text-lg">Dewey Ave, Subic Bay Freeport Zone</p>
-			<p class="text-center text-lg">Contact: (047) 998-0000</p>
-			<p class="text-center text-lg">TIN: 123-456-789</p>
-			<p class="text-center text-lg">Address: Dewey Ave, SBFZ</p>
-			<h2 class="mb-4 mt-4 text-center text-2xl font-bold">Sales Preview</h2>
-			<p class="text-lg">Receipt Number: {orderNumber}</p>
-			<p class="text-lg">Date and Time: {new Date().toLocaleString()}</p>
-			<p class="text-lg">Cashier Name: {cashierName}</p>
-			<p class="text-lg">Order Type: {isDineIn ? 'Dine In' : 'Take Out'}</p>
-			<div class="flex justify-between">
-				<h2 class="mt-4 text-lg font-bold">Items Ordered:</h2>
-				<span class="mt-4 text-lg font-bold">Items Price</span>
-			</div>
-			<ul class="max-h-[200px] overflow-auto">
-				{#each orderedItems as item}
-					<li class="flex flex-col justify-between text-lg">
-						<div class="flex justify-between">
-							<span
-								>{item.order_name}
-								{item.order_name2} x {item.order_quantity}
-								{item.order_size}</span
-							>
-							<span>₱{item.basePrice}.00</span>
-						</div>
-						<ul class="list-disc pl-5">
-							{#if Array.isArray(item.order_addons) && item.order_addons.length > 0}
-								<li>{item.order_addons.join(', ')}</li>
-							{/if}
-							{#if item.order_addons !== 'None'}
-								<li class="flex justify-between">
-									<span>{item.order_addons}</span>
-									<span class="text-right">₱{item.order_addons_price}.00</span>
-								</li>
-							{/if}
-							{#if item.order_addons2 !== 'None'}
-								<li class="flex justify-between">
-									<span>{item.order_addons2}</span>
-									<span class="text-right">₱{item.order_addons_price2}.00</span>
-								</li>
-							{/if}
-							{#if item.order_addons3 !== 'None'}
-								<li class="flex justify-between">
-									<span>{item.order_addons3}</span>
-									<span class="text-right">₱{item.order_addons_price3}.00</span>
-								</li>
-							{/if}
-						</ul>
-						<span>---------------------------------------------</span>
-					</li>
-				{/each}
-			</ul>
-			<div class="flex justify-between">
-				<p class="mt-4 text-lg font-bold">Total Amount</p>
-				<span class="mt-4 text-lg font-bold"
-					>₱{orderedItems
-						.reduce(
-							(total, item) =>
-								total + parseFloat(item.order_price.toString().replace('₱', '').replace(',', '')),
-							0
-						)
-						.toFixed(2)}</span
-				>
-			</div>
-			<div class="flex justify-between">
-				<p class="text-lg">Amount Paid:</p>
-				<span class="text-lg">₱{payment}</span>
-			</div>
-			<div class="flex justify-between">
-				<p class="text-lg">Change:</p>
-				<span class="text-lg"
-					>₱{orderedItems.length > 0 && payment
-						? Math.max(
-								0,
-								parseFloat(
-									(
-										parseFloat(payment.replace('₱', '').replace(',', '')) -
-										orderedItems.reduce(
-											(total, item) =>
-												total +
-												parseFloat(item.order_price.toString().replace('₱', '').replace(',', '')),
-											0
-										)
-									).toFixed(2)
-								)
-							)
-						: '0.00'}</span
-				>
-			</div>
-			<h2 class="mt-4 text-center text-2xl font-bold">Thank You for Dining with Us!</h2>
-			<div class="mt-4 flex justify-between">
-				<button on:click={closePopup} class="mr-1 w-full rounded bg-red-500 px-6 py-3 text-white"
-					>Cancel Order</button
-				>
-				<button on:click={printReceipt} class="ml-1 w-full rounded bg-blue-500 px-6 py-3 text-white"
-					>Print Receipt</button
-				>
-			</div>
-		</div>
-	</div>
-{/if}
-
 
 
 {#if isCodePopupVisible}
