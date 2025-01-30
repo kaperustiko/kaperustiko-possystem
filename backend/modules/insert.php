@@ -156,6 +156,42 @@ if ($requestMethod === 'POST') {
         }
         $stmt->close();
     }
+
+    // Handle table reservation
+    if (isset($data['reserve_date'])) {
+        $stmt = $conn->prepare("INSERT INTO reserve_table (reserve_date, reserve_time, table_number) VALUES (?, ?, ?)");
+        $stmt->bind_param("ssi", 
+            $data['reserve_date'], 
+            $data['reserve_time'], 
+            $data['table_number']
+        );
+
+        // Execute the statement
+        if ($stmt->execute()) {
+            echo json_encode(["success" => true, "message" => "Table reserved successfully."]);
+        } else {
+            echo json_encode(["success" => false, "error" => $stmt->error]);
+        }
+        $stmt->close();
+    }
+
+    // Handle voucher insertion
+    if (isset($data['voucher_code'])) {
+        $stmt = $conn->prepare("INSERT INTO vouchers (voucher_code, voucher_discount, voucher_deadline) VALUES (?, ?, ?)");
+        $stmt->bind_param("sds", 
+            $data['voucher_code'], 
+            $data['voucher_discount'],
+            $data['voucher_deadline']
+        );
+
+        // Execute the statement
+        if ($stmt->execute()) {
+            echo json_encode(["status" => "success", "message" => "Voucher inserted successfully."]);
+        } else {
+            echo json_encode(["status" => "error", "message" => "Error inserting voucher: " . $stmt->error]);
+        }
+        $stmt->close();
+    }
 } else {
     echo json_encode(["status" => "error", "message" => "Method not allowed"]);
 }

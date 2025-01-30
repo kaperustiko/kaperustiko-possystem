@@ -56,6 +56,22 @@ switch ($requestMethod) {
                     }
                     break;
 
+                case 'deleteByTableNumber':
+                    $table_number = $_GET['table_number'] ?? null;
+                    if ($table_number) {
+                        $stmt = $conn->prepare("DELETE FROM reserve_table WHERE table_number = ?");
+                        $stmt->bind_param("i", $table_number);
+                        if ($stmt->execute()) {
+                            echo json_encode(["success" => true]);
+                        } else {
+                            echo json_encode(["success" => false, "message" => $stmt->error]);
+                        }
+                        $stmt->close();
+                    } else {
+                        echo json_encode(["success" => false, "message" => "No table number provided"]);
+                    }
+                    break;
+
                 default:
                     echo json_encode(["status" => "error", "message" => "Invalid action"]);
                     break;

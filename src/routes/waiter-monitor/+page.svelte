@@ -23,6 +23,10 @@
 
 	let tableStatus: { [key: string]: boolean } = {};
 
+	let reservedTables: string[] = [];
+
+	let selectedTableNumber: string = ''; // Declare the variable
+
 	async function fetchCashierName() {
 		// Retrieve staff_token from local storage only if not already fetched
 		if (!staffToken) {
@@ -106,6 +110,7 @@
 		refreshInterval = setInterval(fetchOrders, 500); 
 		refreshInterval = setInterval(fetchQueuedOrders, 500); // Set interval for refreshing orders
 		fetchTableStatus();
+		fetchReserveTables();
 	});
 
 	onDestroy(() => {
@@ -231,7 +236,8 @@
 				order_addons2: item.order_addons2 !== 'None' ? item.order_addons2 : undefined,
 				order_addons_price2: item.order_addons_price2 || 0,
 				order_addons3: item.order_addons3 !== 'None' ? item.order_addons3 : undefined,
-				order_addons_price3: item.order_addons_price3 || 0
+				order_addons_price3: item.order_addons_price3 || 0,
+				basePrice: item.basePrice // Include the base price of the item
 			})),
 			totalAmount: Math.round(
 				orderedItems.reduce(
@@ -627,6 +633,17 @@
 			console.error('Failed to fetch table status');
 		}
 	}
+
+	// Function to fetch reserve tables
+	async function fetchReserveTables() {
+		const response = await fetch('http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getReserveTables');
+		if (response.ok) {
+			const data = await response.json();
+			reservedTables = data.map((table: { table_number: string }) => table.table_number); // Assuming the response contains an array of reserved table objects
+		} else {
+			console.error('Failed to fetch reserved tables', response.statusText);
+		}
+	}
 </script>
 
 <div class="flex h-screen">
@@ -705,15 +722,15 @@
 			<!-- Added Table Number Dropdown -->
 			<div class="mb-4 w-full">
 				<label for="tableNumber" class="block text-gray-700">Table Number:</label>
-				<select id="tableNumber" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200">
+				<select bind:value={selectedTableNumber} class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200">
 					<option value="">Select Table Number</option>
 					{#each Array(21) as _, index}
-						<option value={index + 1} class={tableStatus[index + 1] ? 'bg-red-500' : ''} disabled={tableStatus[index + 1]}>
+						<option value={index + 1} 
+							class={queuedOrders.some(order => order.table_number === (index + 1).toString()) ? 'bg-red-500 text-white' : reservedTables.includes((index + 1).toString()) ? 'bg-orange-950 text-white'  : ''} 
+							disabled={tableStatus[index + 1]}>
 							Table {index + 1}
 						</option>
-						
 					{/each}
-					<option>Take Out</option>
 				</select>
 			</div>
 			<div class="mb-4 max-h-full w-full flex-grow space-y-2 overflow-y-auto">

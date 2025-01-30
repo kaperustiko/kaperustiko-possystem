@@ -1,15 +1,15 @@
 <script lang="ts">
     import { FontAwesomeIcon } from '@fortawesome/svelte-fontawesome';
-    import { faTachometerAlt, faTruck, faBoxes, faUndo, faSignOutAlt, faChevronLeft, faClipboardCheck, faChevronRight, faCashRegister, faExchangeAlt, faBoxOpen, faDashboard } from '@fortawesome/free-solid-svg-icons';
+    import { faUndo, faSignOutAlt, faChevronLeft, faClipboardCheck, faChevronRight, faCashRegister, faExchangeAlt, faBoxOpen, faDashboard, faTicketAlt } from '@fortawesome/free-solid-svg-icons';
     import { onMount } from 'svelte';
-    let isActive = { mainPos: false, transaction: false, dashboard: false, inventory: false, delivery: false, return: false }; // Define isActive without activeIcon
+    let isActive = { mainPos: false, transaction: false, dashboard: false, inventory: false, delivery: false, return: false, vouchers: false }; // Define isActive without activeIcon
     let showModal = false; // Define showModal to control the modal visibility
     let sidebarWidth = 'w-18'; // Define a variable for sidebar width
     let userFirstName = ''; // Variable to store the user's first name
     let showSecondPopup = false; // Define a variable to control the second popup visibility
     let inputCode = ''; // Variable to bind the input code
     let code = '123456'; // The correct code for confirmation
-    let currentIcon: 'inventory' | 'dashboard' | null = null;
+    let currentIcon: 'inventory' | 'dashboard' | 'vouchers' | null = null;
 
     function setActive(icon: keyof typeof isActive) {
         // Reset all to false
@@ -79,13 +79,18 @@
         currentIcon = 'dashboard'; // Store the current icon type
     }
 
-    function confirmAuth(icon: 'inventory' | 'dashboard') {
+    function handleVouchersClick() {
+        showSecondPopup = true; // Show the popup when vouchers is clicked
+        currentIcon = 'vouchers'; // Store the current icon type
+    }
+
+    function confirmAuth(icon: 'inventory' | 'dashboard' | 'vouchers') {
         if (inputCode === code) {
             // Proceed with the action if the code is correct
             showSecondPopup = false; // Close the popup
             showAlert('Code confirmed successfully!', 'success'); // Show success alert
             // Navigate to the href of the clicked icon
-            window.location.href = icon === 'inventory' ? '/inventory' : '/dashboard'; // Change this based on the clicked icon
+            window.location.href = icon === 'inventory' ? '/inventory' : icon === 'dashboard' ? '/dashboard' : '/vouchers'; // Change this based on the clicked icon
         } else {
             showAlert('Incorrect code. Please try again.', 'error'); // Show error alert
         }
@@ -179,6 +184,17 @@
             {:else}
                 <span class:text-white={!isActive.inventory}>
                     <FontAwesomeIcon icon={faBoxOpen} class="text-3xl" />
+                </span>
+            {/if}
+        </button>
+    </div>
+    <div class="flex items-center p-4 hover:bg-cyan-600 justify-center" class:bg-white={isActive.vouchers} class:rounded-[4px]={isActive.vouchers} class:ml-[5px]={isActive.vouchers} class:mr-[5px]={isActive.vouchers} class:h-[50px]={isActive.vouchers}>
+        <button type="button" on:click={handleVouchersClick} class="flex items-center justify-center">
+            {#if sidebarWidth === 'w-[220px]'}
+                <span class:text-cyan-950={isActive.vouchers} class:text-white={!isActive.vouchers} class="text-2xl font-bold">Vouchers</span>
+            {:else}
+                <span class:text-white={!isActive.vouchers}>
+                    <FontAwesomeIcon icon={faTicketAlt} class="text-3xl" />
                 </span>
             {/if}
         </button>

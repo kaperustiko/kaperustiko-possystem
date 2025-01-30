@@ -57,7 +57,10 @@
 
 <div class="flex flex-col md:flex-row bg-gray-600 h-screen p-4">
     <div class="column pending w-full md:w-1/3 bg-white mx-2 my-4 p-6 rounded-lg shadow-lg border border-gray-300 hover:shadow-xl transition-shadow duration-300 overflow-auto">
-        <h2 class="text-2xl font-bold mb-4 text-gray-800">Pending</h2>
+        <h2 class="text-2xl font-bold mb-4 text-gray-800 flex justify-between items-center">
+            Pending 
+            <span class="bg-blue-500 text-white rounded-full w-8 h-8 flex items-center justify-center">{pendingItems.length}</span>
+        </h2>
         <div class="space-y-2">
             {#each pendingItems as { item, table_number, que_order_no, items_ordered }}
                 <div class="card p-4 bg-gray-100 rounded-lg shadow hover:bg-gray-200 transition-colors duration-300 border border-gray-300">
@@ -66,9 +69,28 @@
                     <p class="text-gray-600">Order Details:</p>
                     <div class="font-medium space-y-1">
                         {#each JSON.parse(items_ordered) as item}
-                            <div>
-                                {item.order_name} {item.order_name2} ({item.order_quantity}, {item.order_size})
+                            <div class="flex items-center justify-between border-b border-gray-200 py-4">
+                                <div class="flex-1">
+                                    <p class="font-semibold text-lg">Name: {item.order_name} {item.order_name2}</p>
+                                    <p class="font-normal text-gray-600">Quantity: {item.order_quantity}</p>
+                                    <p class="font-normal text-gray-600">Size: {item.order_size}</p>
+                                </div>
+                                <div class="flex-none text-right">
+                                    
+                                    {#if item.order_addons && item.order_addons_price != null && item.order_addons_price > 0}
+                                        <div class="flex justify-between">
+                                            <p class="font-normal">Addons:</p>
+                                            <p class="font-normal">{item.order_addons}</p>
+                                        </div>
+                                    {/if}
+                                </div>
                             </div>
+                            {#if item.order_addons2}
+                                <p class="font-normal text-gray-600">Addons 2: {item.order_addons2}</p>
+                            {/if}
+                            {#if item.order_addons3}
+                                <p class="font-normal text-gray-600">Addons 3: {item.order_addons3}</p>
+                            {/if}
                         {/each}
                     </div>
                     <div class="mt-4 flex space-x-2">
@@ -92,7 +114,10 @@
         </div>
     </div>
     <div class="column processing w-full md:w-1/3 bg-white mx-2 my-4 p-6 rounded-lg shadow-lg border border-gray-300 hover:shadow-xl transition-shadow duration-300 overflow-auto">
-        <h2 class="text-2xl font-bold mb-4 text-gray-800">Processing</h2>
+        <h2 class="text-2xl font-bold mb-4 text-gray-800 flex justify-between items-center">
+            Processing 
+            <span class ="bg-yellow-500 text-white rounded-full w-8 h-8 flex items-center justify-center">{processingItems.length}</span>
+        </h2>
         <div class="space-y-2">
             {#each processingItems as { item, table_number, que_order_no, items_ordered }}
                 <div class="card p-4 bg-gray-100 rounded-lg shadow hover:bg-gray-200 transition-colors duration-300 border border-gray-300">
@@ -101,9 +126,28 @@
                     <p class="text-gray-600">Order Details:</p>
                     <div class="font-medium space-y-1">
                         {#each JSON.parse(items_ordered) as item}
-                            <div>
-                                {item.order_name} {item.order_name2} ({item.order_quantity}, {item.order_size})
+                            <div class="flex items-center justify-between border-b border-gray-200 py-4">
+                                <div class="flex-1">
+                                    <p class="font-semibold text-lg">Name: {item.order_name} {item.order_name2}</p>
+                                    <p class="font-normal text-gray-600">Quantity: {item.order_quantity}</p>
+                                    <p class="font-normal text-gray-600">Size: {item.order_size}</p>
+                                </div>
+                                <div class="flex-none text-right">
+                                    
+                                    {#if item.order_addons && item.order_addons_price != null && item.order_addons_price > 0}
+                                        <div class="flex justify-between">
+                                            <p class="font-normal">Addons:</p>
+                                            <p class="font-normal">{item.order_addons}</p>
+                                        </div>
+                                    {/if}
+                                </div>
                             </div>
+                            {#if item.order_addons2}
+                                <p class="font-normal text-gray-600">Addons 2: {item.order_addons2}</p>
+                            {/if}
+                            {#if item.order_addons3}
+                                <p class="font-normal text-gray-600">Addons 3: {item.order_addons3}</p>
+                            {/if}
                         {/each}
                     </div>
                     <div class="mt-4 flex space-x-2">
@@ -127,7 +171,10 @@
         </div>
     </div>
     <div class="column done w-full md:w-1/3 bg-white mx-2 my-4 p-6 rounded-lg shadow-lg border border-gray-300 hover:shadow-xl transition-shadow duration-300 overflow-auto">
-        <h2 class="text-2xl font-bold mb-4 text-gray-800">Done</h2>
+        <h2 class="text-2xl font-bold mb-4 text-gray-800 flex justify-between items-center">
+            Done 
+            <span class="text-white bg-green-500 rounded-full w-8 h-8 flex items-center justify-center">{doneItems.length}</span>
+        </h2>
         <div class="space-y-2">
             {#each doneItems as { item, table_number, que_order_no, items_ordered }}
                 <div class="card p-4 bg-gray-100 rounded-lg shadow hover:bg-gray-200 transition-colors duration-300 border border-gray-300">
@@ -136,10 +183,29 @@
                     <p class="text-gray-600">Order Details:</p>
                     <div class="font-medium space-y-1">
                         {#each JSON.parse(items_ordered) as item}
-                            <div>
-                                {item.order_name} {item.order_name2} ({item.order_quantity}, {item.order_size})
+                        <div class="flex items-center justify-between border-b border-gray-200 py-4">
+                            <div class="flex-1">
+                                <p class="font-semibold text-lg">Name: {item.order_name} {item.order_name2}</p>
+                                <p class="font-normal text-gray-600">Quantity: {item.order_quantity}</p>
+                                <p class="font-normal text-gray-600">Size: {item.order_size}</p>
                             </div>
-                        {/each}
+                            <div class="flex-none text-right">
+                                
+                                {#if item.order_addons && item.order_addons_price != null && item.order_addons_price > 0}
+                                    <div class="flex justify-between">
+                                        <p class="font-normal">Addons:</p>
+                                        <p class="font-normal">{item.order_addons}</p>
+                                    </div>
+                                {/if}
+                            </div>
+                        </div>
+                        {#if item.order_addons2}
+                            <p class="font-normal text-gray-600">Addons 2: {item.order_addons2}</p>
+                        {/if}
+                        {#if item.order_addons3}
+                            <p class="font-normal text-gray-600">Addons 3: {item.order_addons3}</p>
+                        {/if}
+                    {/each}
                     </div>
                 </div>
             {/each}

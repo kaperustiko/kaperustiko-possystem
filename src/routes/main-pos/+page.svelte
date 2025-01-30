@@ -1,12 +1,11 @@
 <script lang="ts">
-	import Card from '../components/card.svelte';
 	import Sidebar from '../sidebar/+page.svelte';
 	import { orderedItemsStore } from '../../stores/orderedItemsStore';
 	import { onMount } from 'svelte';
 	import { handleButtonClick } from '../../utils/buttonHandler'; // Import the reusable function
 	import { currentInputStore } from '../../stores/currentInputStore'; // Import the store
+	import { WindowsSolid } from 'flowbite-svelte-icons';
 
-	let cardData: MenuItem[] = [];
 	let amountPaid = '₱0.00';
 	let cashierName = '';
 	let staffToken: string | null = null; // Declare a variable to hold the staff_token
@@ -15,8 +14,82 @@
 	let orderedItems: OrderedItem[] = []; // Declare and initialize orderedItems
 	let isTakeOut = false; // Declare and initialize isTakeOut
 	let isDineIn = false; // Declare and initialize isDineIn
-	let queuedOrders: OrderedItem[] = []; // Declare a variable to hold the fetched orders
+	let queuedOrders: QueuedOrder[] = []; // Use the defined type for queuedOrders
 	let orders: any[] = []; // Declare a variable to hold fetched orders
+	let isReservePopupVisible = false; // State variable to control the visibility of the reserve popup
+	let tableStatus: { [key: string]: boolean } = {};
+	let isReservePopup2Visible = false; // State variable to control the visibility of the reserve popup
+
+	let reserveDate = '';
+	let reserveTime = '';
+	let selectedTableNumber = '';
+
+	let reservedTables: string[] = []; // Declare an array to hold reserved table numbers
+
+	type QueuedOrder = {
+		que_order_no: string;
+		receipt_number: string;
+		date: string;
+		time: string;
+		table_number: string;
+		order_status: string;
+		items_ordered: string;
+		total_amount: number;
+	};
+
+	let totalOrderedItemsPrice = 0; // Variable to hold the total price of ordered items
+	let voucherCode = ''; // Declare the voucherCode variable
+	let voucherDiscount = 0; // Declare the voucherDiscount variable
+
+	// Define the Voucher type
+	type Voucher = {
+		code: string;
+		discount: number;
+		voucher_discount: string;
+		voucher_code: string;
+		// Add other fields as necessary
+	};
+
+	// Function to calculate total price of ordered items
+	function calculateTotalOrderedItemsPrice() {
+		totalOrderedItemsPrice = orderedItems.reduce((total, item) => {
+			// Calculate total addons price
+			const addonsPrice = 
+				(item.order_addons_price || 0) + 
+				(item.order_addons_price2 || 0) + 
+				(item.order_addons_price3 || 0);
+			
+			// Calculate total for this item
+			const itemTotal = item.total_amount;
+
+			// Return the accumulated total
+			return total + itemTotal;
+		}, 0);
+		
+		// Log the total ordered items price
+		
+	}
+
+	// Call this function whenever orderedItems changes
+	$: calculateTotalOrderedItemsPrice();
+
+	// Function to calculate voucher discount
+	async function calculateVoucherDiscount() {
+		const response = await fetch(`http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getVouchersbyCode&voucher_code=${voucherCode}`, {
+			method: 'GET' // Change to GET method
+		});
+		if (response.ok) {
+			const data = await response.json();
+			voucherDiscount = data[0].voucher_discount;
+		} else {
+			console.error('Failed to fetch vouchers:', response.statusText);
+			voucherDiscount = 0; // Reset discount on fetch failure
+		}
+		console.log('Voucher Code Inputted:', voucherCode); // Log the voucher code inputted
+		console.log('Fetched Discount:', voucherDiscount); // Log the fetched discount
+		// Log the link with the inputted voucher code
+		console.log(`Fetch URL: http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getVouchersbyCode&voucher_code=${voucherCode}`);
+	}
 
 	async function fetchCashierName() {
 		// Retrieve staff_token from local storage only if not already fetched
@@ -38,19 +111,34 @@
 	}
 
 	// Function to fetch orders
-	async function fetchQueOrders() {
-		const response = await fetch('http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getQueOrders');
+	async function fetchQueuedOrders() {
+		const response = await fetch(
+			'http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getQueOrders'
+		);
 		if (response.ok) {
-			const orders = await response.json();
-			console.log('Fetched queue orders:', orders); // Log the fetched queue orders
-			queuedOrders = orders; // Store the fetched orders in the state variable
+			queuedOrders = await response.json();
 		} else {
-			console.error('Failed to fetch queue orders:', response.statusText);
+			console.error('Failed to fetch queued orders', response.statusText); // Improved error logging
+		}
+	}
+
+	// Function to fetch reserve tables
+	async function fetchReserveTables() {
+		const response = await fetch(
+			'http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getReserveTables'
+		);
+		if (response.ok) {
+			const data = await response.json();
+			reservedTables = data.map((table: { table_number: string }) => table.table_number); // Assuming the response contains an array of reserved table objects
+		} else {
+			console.error('Failed to fetch reserved tables', response.statusText);
 		}
 	}
 
 	async function fetchOrders() {
-		const response = await fetch('http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getQueOrders');
+		const response = await fetch(
+			'http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getQueOrders'
+		);
 		if (response.ok) {
 			orders = await response.json(); // Store the fetched orders
 		} else {
@@ -72,11 +160,12 @@
 	}
 
 	onMount(() => {
-		fetchQueOrders();
+		fetchQueuedOrders();
 		fetchCashierName(); // Automatically fetch cashier name on mount
 		fetchOrders(); // Fetch orders on component mount
 		updateTime(); // Initial call to set the time
 		const intervalTime = setInterval(updateTime, 1000); // Update time every second
+		fetchReserveTables(); // Fetch reserved tables on component mount
 		return () => {
 			clearInterval(intervalTime); // Clear interval on component unmount
 		};
@@ -90,15 +179,6 @@
 	let isCodePopupVisible = false;
 	let voidIndex: number | null = null;
 	let inputCode = '';
-
-	// Sort cardData by label1 and label2
-	cardData.sort((a, b) => {
-		if (a.label < b.label) return -1;
-		if (a.label > b.label) return 1;
-		if (a.label2 < b.label2) return -1;
-		if (a.label2 > b.label2) return 1;
-		return 0;
-	});
 
 	function handleNumberInput(num: string) {
 		payment += num;
@@ -116,8 +196,7 @@
 		isPopupVisible = false;
 	}
 
-	function printReceipt() {
-	}
+	function printReceipt() {}
 
 	function showAlert(message: string, type: string) {
 		const alertDiv = document.createElement('div');
@@ -128,7 +207,6 @@
 			alertDiv.remove();
 		}, 3000); // Remove alert after 3 seconds
 	}
-
 
 	function voidOrder(index: number) {
 		voidIndex = index;
@@ -141,7 +219,7 @@
 	}
 
 	let cards = Array.from({ length: 21 }, (_, index) => ({
-		table: `${index + 1}`,
+		table: `${index + 1}`
 	}));
 
 	type OrderedItem = {
@@ -162,6 +240,10 @@
 		basePrice: number;
 		order_addons?: string;
 		order_addons_price?: number;
+		order_addons2?: string;
+		order_addons_price2?: number;
+		order_addons3?: string;
+		order_addons_price3?: number;
 	};
 
 	function handlePlaceOrder() {
@@ -186,13 +268,78 @@
 
 	// Function to handle checkout
 	function handleCheckOut(table: string) {
-		const orderToCheckOut = queuedOrders.find(order => order.table_number === table);
+		const orderToCheckOut = queuedOrders.find((order) => order.table_number === table);
 		if (orderToCheckOut) {
 			orderedItems = JSON.parse(orderToCheckOut.items_ordered); // Add items to orderedItems
+			totalOrderedItemsPrice = orderToCheckOut.total_amount; // Set totalOrderedItemsPrice to the total_amount of the order
 			orderNumber = orderToCheckOut.que_order_no; // Set the order number
+			console.log(totalOrderedItemsPrice);
 			closeCardPopup(); // Close the popup after checking out
 		} else {
 			showAlert('No orders found for this table.', 'error'); // Show alert if no orders found
+		}
+	}
+
+	// Function to handle table reservation
+	async function handleReserveTable() {
+		const response = await fetch(
+			'http://localhost/kaperustiko-possystem/backend/modules/insert.php?action=reserve_date',
+			{
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					reserve_date: reserveDate,
+					reserve_time: reserveTime,
+					table_number: selectedTableNumber
+				})
+			}
+		);
+
+		const result = await response.json();
+		if (result.success) {
+			showAlert('Table reserved successfully!', 'success');
+			isReservePopupVisible = false;
+			location.reload();
+		} else {
+			showAlert('Failed to reserve table: ' + result.error, 'error');
+		}
+	}
+
+	async function openReservedTable2Popup(card: any) {
+		isReservePopup2Visible = true; // Set the popup visibility to true
+		selectedCard = card; // Store the selected card data
+
+		// Fetch reserved table details
+		const response = await fetch(
+			`http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getInfoReserveTables&table_number=${card.table}`
+		);
+		if (response.ok) {
+			const reservedTableDetails = await response.json();
+			// You can now use reservedTableDetails to display more information in the popup if needed
+			reserveDate = reservedTableDetails[0]?.reserve_date || ''; // Assuming the response contains reserve_date
+			reserveTime = reservedTableDetails[0]?.reserve_time || ''; // Assuming the response contains reserve_time
+		} else {
+			console.error('Failed to fetch reserved table details:', response.statusText);
+		}
+	}
+
+	async function handleDeleteReservation() {
+		const response = await fetch(
+			`http://localhost/kaperustiko-possystem/backend/modules/delete.php?action=deleteByTableNumber&table_number=${selectedCard.table}`,
+			{
+				method: 'DELETE'
+			}
+		);
+
+		const result = await response.json();
+		if (result.success) {
+			showAlert('Reservation deleted successfully!', 'success');
+			isReservePopup2Visible = false; // Close the popup
+			location.reload(); // Optionally reload to reflect changes
+		} else {
+			showAlert('Failed to delete reservation: ' + result.message, 'error');
 		}
 	}
 </script>
@@ -201,10 +348,10 @@
 	<Sidebar />
 	<div class="flex flex-grow overflow-hidden bg-gray-100">
 		<div class="flex-start w-full overflow-auto p-4">
-			<div class="mb-4 flex space-x-4 w-full">
-				{#each ['All', 'Occupied', 'Available', 'Reserved', 'Not Paid', 'Take Out'] as category}
+			<div class="mb-4 flex w-full space-x-4">
+				{#each ['All', 'Occupied', 'Available', 'Reserved', 'Take Out'] as category}
 					<button
-						class="rounded-md px-6 py-2 font-bold text-black w-full"
+						class="w-full rounded-md px-6 py-2 font-bold text-black"
 						class:bg-cyan-950={selectedCategory === category}
 						class:text-white={selectedCategory === category}
 						class:bg-white={selectedCategory !== category}
@@ -214,6 +361,12 @@
 						{category}
 					</button>
 				{/each}
+				<button
+					class="w-full rounded-md bg-cyan-950 px-6 py-2 font-bold text-white hover:bg-blue-600"
+					on:click={() => (isReservePopupVisible = true)}
+				>
+					Reserve Table
+				</button>
 			</div>
 
 			<div class="mb-4 flex items-center justify-between font-bold text-black">
@@ -225,8 +378,6 @@
 					<p>Display Available Tables</p>
 				{:else if selectedCategory === 'Reserved'}
 					<p>Display Reserved Tables</p>
-				{:else if selectedCategory === 'Not Paid'}
-					<p>Display Not Paid Tables</p>
 				{:else if selectedCategory === 'Take Out'}
 					<p>Display Take Out Tables</p>
 				{/if}
@@ -235,74 +386,107 @@
 
 			<div class="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3">
 				{#each cards as card}
-					<button 
-						class={`border-2 ${orders.some(order => order.table_number === card.table) ? 'border-white bg-cyan-950 text-white' : 'border-cyan-950 bg-white text-black'} p-8 rounded-full shadow-lg flex flex-col items-center justify-center`}
-						on:click={() => {
-							if (orders.some(order => order.table_number === card.table)) {
-								openCardPopup(card); // Open popup only if the table is occupied
-							}
-						}}
-						aria-label={`Open popup for table ${card.table}`}
-					>
-						<h3 class="font-bold text-6xl"> {card.table} </h3>
-						<span class={`bg-gray-200 text-gray-500 text-xs rounded-full px-4 py-2 mt-2 ${orders.some(order => order.table_number === card.table) ? 'bg-red-500 text-white' : 'bg-green-500 text-white'}`}>
-							{orders.some(order => order.table_number === card.table) ? 'Occupied' : 'Available'}
-						</span>
-					</button>
+					{#if selectedCategory === 'All' || (selectedCategory === 'Occupied' && orders.some((order) => order.table_number === card.table)) || (selectedCategory === 'Available' && !orders.some((order) => order.table_number === card.table) && !reservedTables.includes(card.table))}
+						<button
+							class={`border-2 ${orders.some((order) => order.table_number === card.table) ? 'border-white bg-cyan-950 text-white' : reservedTables.includes(card.table) ? 'border-white bg-red-950 text-white' : 'border-cyan-950 bg-white text-black'} flex flex-col items-center justify-center rounded-full p-8 shadow-lg`}
+							on:click={() => {
+								if (reservedTables.includes(card.table)) {
+									openReservedTable2Popup(card); // Open popup for reserved table
+								} else if (orders.some((order) => order.table_number === card.table)) {
+									openCardPopup(card); // Open popup only if the table is occupied
+								}
+							}}
+							aria-label={`Open popup for table ${card.table}`}
+						>
+							<h3 class="text-6xl font-bold">{card.table}</h3>
+							<span
+								class={`mt-2 rounded-full bg-gray-200 px-4 py-2 text-xs text-gray-500 ${orders.some((order) => order.table_number === card.table) ? 'bg-red-500 text-white' : reservedTables.includes(card.table) ? 'bg-red-500 text-white' : 'bg-green-500 text-white'}`}
+							>
+								{orders.some((order) => order.table_number === card.table)
+									? 'Occupied'
+									: reservedTables.includes(card.table)
+										? 'Reserved'
+										: 'Available'}
+							</span>
+						</button>
+					{/if}
 				{/each}
 			</div>
 
 			{#if isCardPopupVisible}
 				<div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70">
 					<div class="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
-						<h2 class="mb-4 text-center text-2xl font-bold text-gray-800">Table {selectedCard.table}</h2>
+						<h2 class="mb-4 text-center text-2xl font-bold text-gray-800">
+							Table {selectedCard.table}
+						</h2>
 						{#if queuedOrders.length > 0}
-								{#each queuedOrders as order}
-									{#if order.table_number === selectedCard.table}
-										<div class="border-b border-gray-300 py-2">
-											<p class="font-semibold">Order No: <span class="font-normal">{order.que_order_no}</span></p>
-											<p class="font-semibold">Receipt No: <span class="font-normal">{order.receipt_number}</span></p>
-											<p class="font-semibold">Date: <span class="font-normal">{order.date}</span></p>
-											<p class="font-semibold">Time: <span class="font-normal">{order.time}</span></p>
-											<p class="font-semibold">Items Ordered:</p>
-												{#each JSON.parse(order.items_ordered) as item}
-													<div class="flex items-center justify-between border-b border-gray-200 py-2">
-														<div class="flex-1">
-															<p class="font-normal">Name: {item.order_name} {item.order_name2}</p>
-															<p class="font-normal">Quantity: {item.order_quantity}</p>
-															<p class="font-normal">Size: {item.order_size}</p>
-														</div>
-														<div class="flex-none text-right">
-															<p class="font-normal">Base Price: ₱{item.basePrice}</p>
-															<p class="font-normal">Addons:</p>
-															{#if item.order_addons && item.order_addons_price != null && item.order_addons_price > 0}
-																<div class="flex justify-between">
-																	<p class="font-normal">{item.order_addons}</p>
-																	<p class="font-normal text-right">₱{item.order_addons_price}</p>
-																</div>
-															{/if}
-														</div>
-													</div>
-													{#if item.order_addons2}
-														<p class="font-normal">Addons 2: {item.order_addons2}</p>
-														<p class="font-normal">Addons Price 2: ₱{item.order_addons_price2}</p>
-													{/if}
-													{#if item.order_addons3}
-														<p class="font-normal">Addons 3: {item.order_addons3}</p>
-														<p class="font-normal">Addons Price 3: ₱{item.order_addons_price3}</p>
-													{/if}
-												{/each}
-											<p class="font-semibold">Total Amount: <span class="font-normal">₱{order.total_amount}</span></p>
+							{#each queuedOrders as order}
+								{#if order.table_number === selectedCard.table}
+									<div class="border-b border-gray-300 py-2">
+										<p class="font-semibold">
+											Order No: <span class="font-normal">{order.que_order_no}</span>
+										</p>
+										<p class="font-semibold">
+											Receipt No: <span class="font-normal">{order.receipt_number}</span>
+										</p>
+										<p class="font-semibold">Date: <span class="font-normal">{order.date}</span></p>
+										<p class="font-semibold">Time: <span class="font-normal">{order.time}</span></p>
+										<p class="font-semibold">Items Ordered:</p>
+										{#each JSON.parse(order.items_ordered) as item}
+											<div class="flex items-center justify-between border-b border-gray-200 py-2">
+												<div class="flex-1">
+													<p class="font-normal">Name: {item.order_name} {item.order_name2}</p>
+													<p class="font-normal">Quantity: {item.order_quantity}</p>
+													<p class="font-normal">Size: {item.order_size}</p>
+												</div>
+												<div class="flex-none text-right">
+													<p class="font-normal">₱{item.basePrice}.00</p>
+												</div>
+											</div>
+											<p class="font-normal">Addons:</p>
+											{#if item.order_addons && item.order_addons_price != null && item.order_addons_price > 0}
+												<div class="flex justify-between">
+													<p class="font-normal">{item.order_addons}</p>
+													<p class="text-right font-normal">₱{item.order_addons_price}.00</p>
+												</div>
+											{/if}
+											{#if item.order_addons2}
+												<div class="flex justify-between">
+													<p class="font-normal">{item.order_addons2}</p>
+													<p class="text-right font-normal">₱{item.order_addons_price2}.00</p>
+												</div>
+											{/if}
+											{#if item.order_addons3}
+												<div class="flex justify-between">
+													<p class="font-normal">{item.order_addons3}</p>
+													<p class="text-right font-normal">₱{item.order_addons_price3}.00</p>
+												</div>
+											{/if}
+										{/each}
+										<div class="flex justify-between">
+											<p class="text-lg font-bold">Total Price:</p>
+											<p class="text-right text-lg font-normal">₱{order.total_amount}.00</p>
 										</div>
-										<p class="font-semibold">Status: <span class="font-normal">{order.order_status}</span></p>
-									{/if}
-								{/each}
+									</div>
+									<p class="font-semibold">
+										Status: <span class="font-normal">{order.order_status}</span>
+									</p>
+								{/if}
+							{/each}
 						{:else}
 							<p class="text-center text-gray-600">No orders for this table.</p>
 						{/if}
-						<div class="flex justify-between mt-4">
-							<button on:click={closeCardPopup} class="rounded-md bg-red-500 px-4 py-2 w-full text-white hover:bg-red-600 transition">Close</button>
-							<button on:click={() => handleCheckOut(selectedCard.table)} class="rounded-md bg-green-500 px-4 py-2 w-full text-white hover:bg-green-600 transition">Check Out</button>
+						<div class="mt-4 flex justify-center space-x-4">
+							<button
+								on:click={closeCardPopup}
+								class="w-full max-w-xs rounded-md bg-red-500 px-4 py-2 text-white transition hover:bg-red-600"
+								>Close</button
+							>
+							<button
+								on:click={() => handleCheckOut(selectedCard.table)}
+								class="w-full max-w-xs rounded-md bg-green-500 px-4 py-2 text-white transition hover:bg-green-600"
+								>Check Out</button
+							>
 						</div>
 					</div>
 				</div>
@@ -321,17 +505,36 @@
 			<div class="mb-4 max-h-[400px] w-full flex-grow space-y-2 overflow-y-auto">
 				{#if orderedItems.length > 0}
 					{#each orderedItems as item}
-						<div class="border rounded-lg p-4 shadow-md bg-white">
-							<p class="font-semibold">{item.order_name} {item.order_name2} {item.order_quantity}</p>
+						<div class="rounded-lg border bg-white p-4 shadow-md">
+							<p class="font-semibold">
+								{item.order_name} {item.order_name2} x{item.order_quantity}
+							</p>
 							<div class="mb-2 flex w-full items-center justify-between border-b pb-1">
-							<p class="font-normal">{item.order_size}</p>
-							<p class="font-normal text-right">₱{item.basePrice}</p>
+								<p class="font-normal">{item.order_size}</p>
+								<p class="text-right font-normal">₱{item.basePrice}.00</p>
 							</div>
-							<p class="font-normal">Addons:</p>
+
 							{#if item.order_addons && item.order_addons_price != null && item.order_addons_price > 0}
-								<div class="flex justify-between">
-									<p class="font-normal">{item.order_addons}</p>
-									<p class="font-normal text-right">₱{item.order_addons_price}</p>
+								<p class="font-normal">Addons:</p>
+								<div class="flex flex-col">
+									{#if item.order_addons}
+										<div class="flex justify-between">
+											<p class="font-normal">{item.order_addons}</p>
+											<p class="text-right font-normal">₱{item.order_addons_price}.00</p>
+										</div>
+									{/if}
+									{#if item.order_addons2}
+										<div class="flex justify-between">
+											<p class="font-normal">{item.order_addons2}</p>
+											<p class="text-right font-normal">₱{item.order_addons_price2}.00</p>
+										</div>
+									{/if}
+									{#if item.order_addons3}
+										<div class="flex justify-between">
+											<p class="font-normal">{item.order_addons3}</p>
+											<p class="text-right font-normal">₱{item.order_addons_price3}.00</p>
+										</div>
+									{/if}
 								</div>
 							{/if}
 						</div>
@@ -342,30 +545,52 @@
 			</div>
 
 			<div class="mt-auto w-full rounded-lg p-2 shadow-md">
-				<div class="mb-2 flex w-full items-center justify-between border-b pb-1">
-					<p class="text-sm font-semibold text-gray-700">VAT (12%):</p>
-					<p class="text-sm font-bold text-gray-800">₱{(parseFloat(payment) * 0.12).toFixed(2)}</p>
+			<div class="mb-4 flex w-full items-center justify-between border-b pb-2">
+					<p class="text-sm font-semibold text-gray-700">Voucher Code:</p>
+					<div class="flex-grow">
+						<input 
+							type="text" 
+							bind:value={voucherCode} 
+							class="border rounded-lg p-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full" 
+							placeholder="Enter voucher code" 
+						/>
+					</div>
+					<button
+						on:click={calculateVoucherDiscount}
+						class="ml-2 rounded-md bg-blue-500 px-4 py-2 text-white hover:bg-blue-600"
+					>
+						Get
+					</button>
 				</div>
-				<div class="mb-2 flex w-full items-center justify-between border-b pb-1">
+				<div class="flex w-full items-center justify-between border-b pb-1">
+					<p class="text-sm font-semibold text-gray-700">VAT (12%):</p>
+					<p class="text-sm font-bold text-gray-800">₱{(totalOrderedItemsPrice * 0.12).toFixed(2)}</p>
+				</div>
+				<div class="flex w-full items-center justify-between border-b pb-1">
 					<p class="text-sm font-semibold text-gray-700">Service Charge:</p>
 					<p class="text-sm font-bold text-gray-800">₱20.00</p>
 				</div>
 				<div class="mb-2 flex w-full items-center justify-between border-b pb-1">
-					<p class="text-sm font-semibold text-gray-700">Total Cost:</p>
-					<p class="text-sm font-bold text-gray-800">₱{(parseFloat(payment) + (parseFloat(payment) * 0.12) + 20).toFixed(2)}</p>
+					<p class="text-sm font-semibold text-gray-700">Voucher Discount:</p>
+					<p class="text-sm font-bold text-gray-800">{(voucherDiscount)}%</p>
+				</div>
+				<div class="mb-2 flex w-full items-center justify-between border-b pb-1">
+					<p class="text-md font-semibold text-gray-700">Total Cost:</p>
+					<p class="text-md font-bold text-gray-800">
+						₱{((totalOrderedItemsPrice * 1.12) + 20 - (totalOrderedItemsPrice * voucherDiscount / 100)).toFixed(2)}
+					</p>
 				</div>
 				<div class="flex justify-between">
 					<p class="text-sm">Amount Paid:</p>
-					<span class="text-sm">₱{payment || '0'}.00</span>
+					<span class="text-sm">₱{(parseFloat(payment) || 0).toFixed(2)}</span>
 				</div>
 				<div class="flex justify-between">
 					<p class="text-sm">Change:</p>
-					<span class="text-sm">₱{(parseFloat(payment) - ((parseFloat(payment) * 0.12) + 20)).toFixed(2) || '0.00'}</span>
+					<span class="text-sm">₱{(parseFloat(payment) - ((totalOrderedItemsPrice * 1.12) + 20)).toFixed(2) || '0.00'}</span>
 				</div>
 			</div>
 
 			<div class="grid h-[400px] w-full grid-cols-4 gap-2">
-	
 				{#each ['7', '8', '9', '⌫', '4', '5', '6', 'Clr', '1', '2', '3', 'Void', '0', '00', 'Place Order'] as key, index}
 					<button
 						on:click={() => {
@@ -421,7 +646,6 @@
 	</div>
 </div>
 
-
 {#if isCodePopupVisible}
 	<div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70">
 		<div class="w-full max-w-md rounded-lg bg-white p-8 shadow-lg">
@@ -439,6 +663,79 @@
 				>
 				<button on:click={confirmVoid} class="rounded-md bg-blue-500 px-4 py-2 text-white"
 					>Confirm</button
+				>
+			</div>
+		</div>
+	</div>
+{/if}
+
+{#if isReservePopupVisible}
+	<div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70">
+		<div class="w-full max-w-md rounded-lg bg-white p-8 shadow-lg">
+			<h2 class="mb-6 text-center text-2xl font-bold text-gray-800">Reserve a Table</h2>
+			<input
+				type="date"
+				bind:value={reserveDate}
+				class="mb-4 w-full rounded border border-gray-300 p-3 shadow-sm focus:outline-none focus:ring focus:ring-blue-200"
+				min={new Date().toISOString().split('T')[0]}
+			/>
+			<input
+				type="time"
+				bind:value={reserveTime}
+				class="mb-4 w-full rounded border border-gray-300 p-3 shadow-sm focus:outline-none focus:ring focus:ring-blue-200"
+			/>
+			<select
+				bind:value={selectedTableNumber}
+				class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200"
+			>
+				<option value="">Select Table Number</option>
+				{#each Array(21) as _, index}
+					<option
+						value={index + 1}
+						class={queuedOrders.some((order) => order.table_number === (index + 1).toString())
+							? 'bg-red-500 text-white'
+							: reservedTables.includes((index + 1).toString())
+								? 'bg-orange-950 text-white'
+								: ''}
+						disabled={tableStatus[index + 1]}
+					>
+						Table {index + 1}
+					</option>
+				{/each}
+			</select>
+			<div class="mt-6 flex justify-between">
+				<button
+					on:click={() => (isReservePopupVisible = false)}
+					class="rounded-md bg-red-600 px-4 py-2 text-white transition hover:bg-red-700"
+					>Cancel</button
+				>
+				<button
+					on:click={handleReserveTable}
+					class="rounded-md bg-blue-600 px-4 py-2 text-white transition hover:bg-blue-700"
+					>Confirm</button
+				>
+			</div>
+		</div>
+	</div>
+{/if}
+
+{#if isReservePopup2Visible}
+	<div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70">
+		<div class="w-full max-w-md rounded-lg bg-white p-8 shadow-lg">
+			<h2 class="mb-4 text-center text-2xl font-bold">Reserved Table Details</h2>
+			<p>Table Number: {selectedCard.table}</p>
+			<p>Reserved Date: {reserveDate}</p>
+			<p>Reserved Time: {reserveTime}</p>
+			<div class="mt-4 flex justify-center space-x-4">
+				<button
+					on:click={() => (isReservePopup2Visible = false)}
+					class="w-full max-w-xs rounded-md bg-red-500 px-4 py-2 text-white transition hover:bg-red-600"
+					>Close</button
+				>
+				<button
+					on:click={handleDeleteReservation}
+					class="w-full max-w-xs rounded-md bg-red-600 px-4 py-2 text-white transition hover:bg-red-700"
+					>Delete Reservation</button
 				>
 			</div>
 		</div>

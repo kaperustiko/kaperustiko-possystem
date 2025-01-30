@@ -129,6 +129,67 @@ function getQueOrders($conn)
     echo json_encode($orders);
 }
 
+function getReserveTables($conn)
+{
+    $sql = "SELECT * FROM reserve_table";
+    $result = $conn->query($sql);
+    $orders = [];
+    if ($result->num_rows > 0) {
+        while ($row = $result->fetch_assoc()) {
+            $orders[] = $row;
+        }
+    }
+    echo json_encode($orders);
+}
+
+function getVouchers($conn)
+{
+    $sql = "SELECT * FROM vouchers";
+    $result = $conn->query($sql);
+    $orders = [];
+    if ($result->num_rows > 0) {
+        while ($row = $result->fetch_assoc()) {
+            $orders[] = $row;
+        }
+    }
+    echo json_encode($orders);
+}
+
+function getVouchersbyCode($conn)
+{
+    $voucher_code = isset($_GET['voucher_code']) ? $_GET['voucher_code'] : '';
+    $sql = "SELECT voucher_discount FROM vouchers WHERE voucher_code = ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("s", $voucher_code);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $orders = [];
+    if ($result->num_rows > 0) {
+        while ($row = $result->fetch_assoc()) {
+            $orders[] = $row;
+        }
+    }
+    echo json_encode($orders);
+}
+
+function getInfoReserveTables($conn)
+{
+    $table_number = isset($_GET['table_number']) ? $_GET['table_number'] : ''; // Retrieve table_number from query parameters
+    $sql = "SELECT * FROM reserve_table WHERE table_number = ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("s", $table_number);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $orders = [];
+    if ($result->num_rows > 0) {
+        while ($row = $result->fetch_assoc()) {
+            $orders[] = $row;
+        }
+    }
+    echo json_encode($orders);
+    $stmt->close();
+}
+
 // Function to get product quantity
 function getProductQty($conn)
 {
@@ -503,6 +564,18 @@ switch ($requestMethod) {
                     break;
                 case 'getQueOrders':
                     getQueOrders($conn);
+                    break;
+                case 'getReserveTables':
+                    getReserveTables($conn);
+                    break;
+                case 'getInfoReserveTables':
+                    getInfoReserveTables($conn);
+                    break;
+                case 'getVouchers':
+                    getVouchers($conn);
+                    break;
+                case 'getVouchersbyCode':
+                    getVouchersbyCode($conn);
                     break;
                 default:
                     echo json_encode(["status" => "error", "message" => "Invalid action"]);
