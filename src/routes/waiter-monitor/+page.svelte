@@ -225,7 +225,7 @@
 			date: new Date().toLocaleDateString(),
 			time: new Date().toLocaleTimeString(),
 			cashierName: cashierName,
-			table_number: (document.getElementById('tableNumber') as HTMLInputElement)?.value || '', // Ensure this key matches
+			table_number: selectedTableNumber, // Use the selected table number
 			itemsOrdered: orderedItems.map((item) => ({
 				order_name: item.order_name,
 				order_name2: item.order_name2,
@@ -259,8 +259,12 @@
 								)
 						)
 						: 0,
-			order_take: isDineIn ? 'Dine In' : 'Take Out' // Ensure this key matches
+			order_take: isDineIn ? 'Dine In' : 'Take Out', // Ensure this key matches
+			saveQueOrder: true // Add this line to indicate saving to que_orders
 		};
+
+		// Log the receipt data
+		console.log('Receipt Data:', receiptData); // Log all data when save order is clicked
 
 		// Now delete all orders before saving the receipt
 		// Call updateQuantity for each ordered item
@@ -298,26 +302,31 @@
 			}
 			console.log('All orders deleted successfully');
 
-			// Send data to the server to save the receipt
-			const saveResponse = await fetch(
-				'http://localhost/kaperustiko-possystem/backend/modules/insert.php?action=save_receipt',
-				{
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json'
-					},
-					body: JSON.stringify(receiptData) // Ensure this is correctly formatted
+			// Check if we are saving to que_orders
+			if (receiptData.saveQueOrder) {
+				// Send data to the server to save the receipt in que_orders
+				const saveResponse = await fetch(
+					'http://localhost/kaperustiko-possystem/backend/modules/save_que_order.php',
+					{
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json'
+						},
+						body: JSON.stringify(receiptData) // Ensure this is correctly formatted
+					}
+				);
+
+				const textResponse = await saveResponse.text(); // Get the response as text
+				console.log('Response from save_receipt.php:', textResponse); // Log the response
+
+				if (!saveResponse.ok) {
+					throw new Error(`Failed to save receipt: ${textResponse}`);
 				}
-			);
-
-			const textResponse = await saveResponse.text(); // Get the response as text
-			console.log('Response from save_receipt.php:', textResponse); // Log the response
-
-			if (!saveResponse.ok) {
-				throw new Error(`Failed to save receipt: ${textResponse}`);
+				// Show success alert
+				showAlert('Order Success', 'success'); // Call showAlert with success type
+			} else {
+				// Logic for saving to total_sales if needed
 			}
-			// Show success alert
-			showAlert('Order Success', 'success'); // Call showAlert with success type
 		});
 
 		// Reset the receipt data
@@ -462,7 +471,7 @@
 					? parseFloat(calculateAddonsPrice([selectedAddons[2]]).replace('₱', '').replace(',', ''))
 					: 0,
 			code: item.code,
-			table_number: (document.getElementById('tableNumber') as HTMLInputElement)?.value || '' // Add table number to order data
+			table_number: selectedTableNumber // Add table number to order data
 		};
 
 		console.log('Order Data:', orderData); // Log the order data

@@ -19,10 +19,19 @@
 	let isReservePopupVisible = false; // State variable to control the visibility of the reserve popup
 	let tableStatus: { [key: string]: boolean } = {};
 	let isReservePopup2Visible = false; // State variable to control the visibility of the reserve popup
+	let isReceiptPopupVisible = false;
 
 	let reserveDate = '';
 	let reserveTime = '';
 	let selectedTableNumber = '';
+	let orderNumber = '';
+	let selectedCategory = 'All';
+	let payment = '';
+	let isPopupVisible = false;
+
+	let isCodePopupVisible = false;
+	let voidIndex: number | null = null;
+	let inputCode = '';
 
 	let reservedTables: string[] = []; // Declare an array to hold reserved table numbers
 
@@ -54,20 +63,19 @@
 	function calculateTotalOrderedItemsPrice() {
 		totalOrderedItemsPrice = orderedItems.reduce((total, item) => {
 			// Calculate total addons price
-			const addonsPrice = 
-				(item.order_addons_price || 0) + 
-				(item.order_addons_price2 || 0) + 
+			const addonsPrice =
+				(item.order_addons_price || 0) +
+				(item.order_addons_price2 || 0) +
 				(item.order_addons_price3 || 0);
-			
+
 			// Calculate total for this item
 			const itemTotal = item.total_amount;
 
 			// Return the accumulated total
 			return total + itemTotal;
 		}, 0);
-		
+
 		// Log the total ordered items price
-		
 	}
 
 	// Call this function whenever orderedItems changes
@@ -75,9 +83,12 @@
 
 	// Function to calculate voucher discount
 	async function calculateVoucherDiscount() {
-		const response = await fetch(`http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getVouchersbyCode&voucher_code=${voucherCode}`, {
-			method: 'GET' // Change to GET method
-		});
+		const response = await fetch(
+			`http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getVouchersbyCode&voucher_code=${voucherCode}`,
+			{
+				method: 'GET' // Change to GET method
+			}
+		);
 		if (response.ok) {
 			const data = await response.json();
 			voucherDiscount = data[0].voucher_discount;
@@ -88,7 +99,9 @@
 		console.log('Voucher Code Inputted:', voucherCode); // Log the voucher code inputted
 		console.log('Fetched Discount:', voucherDiscount); // Log the fetched discount
 		// Log the link with the inputted voucher code
-		console.log(`Fetch URL: http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getVouchersbyCode&voucher_code=${voucherCode}`);
+		console.log(
+			`Fetch URL: http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getVouchersbyCode&voucher_code=${voucherCode}`
+		);
 	}
 
 	async function fetchCashierName() {
@@ -116,7 +129,11 @@
 			'http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getQueOrders'
 		);
 		if (response.ok) {
-			queuedOrders = await response.json();
+			queuedOrders = await response.json(); // Check the response here
+			// Assuming each order has a table_number field
+			queuedOrders.forEach(order => {
+				console.log('Table Number:', order.table_number); // Log the table number for each order
+			});
 		} else {
 			console.error('Failed to fetch queued orders', response.statusText); // Improved error logging
 		}
@@ -171,15 +188,6 @@
 		};
 	});
 
-	let orderNumber = '';
-	let selectedCategory = 'All';
-	let payment = '';
-	let isPopupVisible = false;
-
-	let isCodePopupVisible = false;
-	let voidIndex: number | null = null;
-	let inputCode = '';
-
 	function handleNumberInput(num: string) {
 		payment += num;
 	}
@@ -191,12 +199,6 @@
 	function handleClear() {
 		payment = '';
 	}
-
-	function closePopup() {
-		isPopupVisible = false;
-	}
-
-	function printReceipt() {}
 
 	function showAlert(message: string, type: string) {
 		const alertDiv = document.createElement('div');
@@ -244,10 +246,80 @@
 		order_addons_price2?: number;
 		order_addons3?: string;
 		order_addons_price3?: number;
+		order_price?: number;
 	};
 
 	function handlePlaceOrder() {
-		// Implement the
+		// Check if there are ordered items before opening the receipt popup
+		if (orderedItems.length === 0) {
+			showAlert('No items ordered yet. Please add items to your order.', 'error');
+			return; // Exit the function if no items are ordered
+		}
+		isReceiptPopupVisible = true; // Show the receipt popup
+	}
+
+	function printReceipt() {
+		const receiptData = {
+			receiptNumber: orderNumber,
+			date: new Date().toLocaleDateString(),
+			time: new Date().toLocaleTimeString(),
+			cashierName: cashierName,
+			itemsOrdered: orderedItems,
+			totalAmount: totalOrderedItemsPrice,
+			amountPaid: parseFloat(payment) || 0,
+			change: Math.max(0, parseFloat((parseFloat(payment) - totalOrderedItemsPrice).toFixed(2))),
+			order_take: isTakeOut ? 'Take Out' : 'Dine In',
+			table_number: selectedTableNumber // Ensure this is set correctly
+		};
+
+		// Log the data to check for issues
+		console.log('Receipt Data:', JSON.stringify(receiptData, null, 2));
+
+		fetch('http://localhost/kaperustiko-possystem/backend/modules/insert.php?action=insertReceipt', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify(receiptData)
+		})
+		.then(response => {
+			console.log('Response Status:', response.status); // Log the response status
+			return response.json();
+		})
+		.then(data => {
+			console.log('Response Data:', data); // Log the response data
+			if (data.error) {
+				showAlert(data.error, 'error');
+			} else {
+				showAlert(data.message, 'success');
+				isReceiptPopupVisible = false; // Close the receipt popup
+
+				// Call the delete API after successful receipt printing
+				return fetch(`http://localhost/kaperustiko-possystem/backend/modules/delete.php?action=deleteTableOccupancy&receipt_number=${receiptData.receiptNumber}`, {
+					method: 'DELETE'
+				});
+			}
+		})
+		.then(deleteResponse => {
+			if (deleteResponse) {
+				return deleteResponse.json();
+			}
+		})
+		.then(deleteData => {
+			if (deleteData && deleteData.success) {
+				console.log('Table data deleted successfully.');
+			} else {
+				console.error('Failed to delete table data:', deleteData.message);
+			}
+		})
+		.catch(error => {
+			console.error('Error:', error);
+			showAlert('Failed to save receipt.', 'error');
+		});
+	}
+
+	function openReceiptPopup() {
+		isReceiptPopupVisible = true;
 	}
 
 	function confirmVoid() {
@@ -342,6 +414,8 @@
 			showAlert('Failed to delete reservation: ' + result.message, 'error');
 		}
 	}
+
+	let clickedKey: string | null = null; // Variable to track the clicked key
 </script>
 
 <div class="flex h-screen">
@@ -386,7 +460,10 @@
 
 			<div class="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3">
 				{#each cards as card}
-					{#if selectedCategory === 'All' || (selectedCategory === 'Occupied' && orders.some((order) => order.table_number === card.table)) || (selectedCategory === 'Available' && !orders.some((order) => order.table_number === card.table) && !reservedTables.includes(card.table))}
+					{#if selectedCategory === 'All' || 
+						(selectedCategory === 'Occupied' && orders.some((order) => order.table_number === card.table)) || 
+						(selectedCategory === 'Available' && !orders.some((order) => order.table_number === card.table) && !reservedTables.includes(card.table)) || 
+						(selectedCategory === 'Reserved' && reservedTables.includes(card.table))}
 						<button
 							class={`border-2 ${orders.some((order) => order.table_number === card.table) ? 'border-white bg-cyan-950 text-white' : reservedTables.includes(card.table) ? 'border-white bg-red-950 text-white' : 'border-cyan-950 bg-white text-black'} flex flex-col items-center justify-center rounded-full p-8 shadow-lg`}
 							on:click={() => {
@@ -507,7 +584,8 @@
 					{#each orderedItems as item}
 						<div class="rounded-lg border bg-white p-4 shadow-md">
 							<p class="font-semibold">
-								{item.order_name} {item.order_name2} x{item.order_quantity}
+								{item.order_name}
+								{item.order_name2} {item.order_quantity}
 							</p>
 							<div class="mb-2 flex w-full items-center justify-between border-b pb-1">
 								<p class="font-normal">{item.order_size}</p>
@@ -545,26 +623,24 @@
 			</div>
 
 			<div class="mt-auto w-full rounded-lg p-2 shadow-md">
-			<div class="mb-4 flex w-full items-center justify-between border-b pb-2">
+				<div class="mb-4 flex w-full items-center justify-between border-b pb-2">
 					<p class="text-sm font-semibold text-gray-700">Voucher Code:</p>
-					<div class="flex-grow">
-						<input 
-							type="text" 
-							bind:value={voucherCode} 
-							class="border rounded-lg p-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full" 
-							placeholder="Enter voucher code" 
-						/>
-					</div>
+					<input
+						type="text"
+						bind:value={voucherCode}
+						class="text-sm font-bold text-gray-800 flex-grow mr-2 w-[70%]"
+						placeholder="Enter code"
+					/>
 					<button
 						on:click={calculateVoucherDiscount}
-						class="ml-2 rounded-md bg-blue-500 px-4 py-2 text-white hover:bg-blue-600"
+						class="rounded-md bg-blue-500 px-4 py-2 text-white transition hover:bg-blue-600"
 					>
-						Get
+						Redeem
 					</button>
 				</div>
 				<div class="flex w-full items-center justify-between border-b pb-1">
 					<p class="text-sm font-semibold text-gray-700">VAT (12%):</p>
-					<p class="text-sm font-bold text-gray-800">₱{(totalOrderedItemsPrice * 0.12).toFixed(2)}</p>
+					<p class="text-sm font-bold text-gray-800">₱{(typeof totalOrderedItemsPrice === 'number' ? totalOrderedItemsPrice : 0)}</p>
 				</div>
 				<div class="flex w-full items-center justify-between border-b pb-1">
 					<p class="text-sm font-semibold text-gray-700">Service Charge:</p>
@@ -572,21 +648,25 @@
 				</div>
 				<div class="mb-2 flex w-full items-center justify-between border-b pb-1">
 					<p class="text-sm font-semibold text-gray-700">Voucher Discount:</p>
-					<p class="text-sm font-bold text-gray-800">{(voucherDiscount)}%</p>
+					<p class="text-sm font-bold text-gray-800">{voucherDiscount}%</p>
 				</div>
 				<div class="mb-2 flex w-full items-center justify-between border-b pb-1">
 					<p class="text-md font-semibold text-gray-700">Total Cost:</p>
 					<p class="text-md font-bold text-gray-800">
-						₱{((totalOrderedItemsPrice * 1.12) + 20 - (totalOrderedItemsPrice * voucherDiscount / 100)).toFixed(2)}
+						₱{(
+							(totalOrderedItemsPrice * 1.12 + 20) * (1 - voucherDiscount / 100)
+						).toFixed(2)}
 					</p>
 				</div>
 				<div class="flex justify-between">
 					<p class="text-sm">Amount Paid:</p>
-					<span class="text-sm">₱{(parseFloat(payment) || 0).toFixed(2)}</span>
+					<span class="text-sm">₱{(parseFloat(payment) || 0)}</span>
 				</div>
 				<div class="flex justify-between">
 					<p class="text-sm">Change:</p>
-					<span class="text-sm">₱{(parseFloat(payment) - ((totalOrderedItemsPrice * 1.12) + 20)).toFixed(2) || '0.00'}</span>
+					<span class="text-sm">
+						₱{Math.max(0, parseFloat((parseFloat(payment) - (totalOrderedItemsPrice * 1.12 + 20)).toFixed(2)))}
+					</span>
 				</div>
 			</div>
 
@@ -594,24 +674,19 @@
 				{#each ['7', '8', '9', '⌫', '4', '5', '6', 'Clr', '1', '2', '3', 'Void', '0', '00', 'Place Order'] as key, index}
 					<button
 						on:click={() => {
+							clickedKey = key; // Set the clicked key
 							if (key === 'Clr') {
 								localStorage.removeItem('payment'); // Clear all numbers in local storage
 								console.log('Cleared all numbers from local storage');
 							} else if (key === '⌫') {
 								const currentPayment = localStorage.getItem('payment') || '';
 								localStorage.setItem('payment', currentPayment.slice(0, -1)); // Delete last number
-								console.log('Deleted last number, current value:', localStorage.getItem('payment'));
+								
 							} else if (key === 'Void') {
 								location.reload(); // Reload the page when Void is clicked
 							} else {
 								const currentPayment = localStorage.getItem('payment') || '';
 								localStorage.setItem('payment', currentPayment + key); // Store number in local storage
-								console.log(
-									'Stored number:',
-									key,
-									'Current value:',
-									localStorage.getItem('payment')
-								);
 							}
 							handleButtonClick(
 								key,
@@ -634,9 +709,7 @@
 								};
 							});
 						}}
-						class="rounded bg-gray-200 py-2 font-bold text-gray-800 col-span-{key === 'Place Order'
-							? '2'
-							: '1'} {key === 'Void' ? 'bg-red-900 text-white' : ''}"
+						class={`rounded py-2 font-bold text-gray-800 col-span-${key === 'Place Order' ? '2' : '1'} ${key === 'Void' ? 'bg-red-900 text-white' : ''} ${clickedKey === key ? 'bg-gray-300' : ''}`}
 					>
 						{key}
 					</button>
@@ -738,6 +811,110 @@
 					>Delete Reservation</button
 				>
 			</div>
+		</div>
+	</div>
+{/if}
+
+{#if isReceiptPopupVisible}
+	<div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70">
+		<div class="rounded-lg bg-white p-8 shadow-lg max-w-lg w-full">
+			<div class="mb-4 flex justify-center">
+				<img src="icon.png" alt="Restaurant Logo" class="h-24" />
+			</div>
+			<h2 class="text-center text-2xl font-bold">Kape Rustiko Cafe and Restaurant</h2>
+			<p class="text-center text-lg">Dewey Ave, Subic Bay Freeport Zone</p>
+			<p class="text-center text-lg">VAT REG TIN: 123-456-789-12345</p>
+			<h2 class="mb-4 mt-4 text-center text-2xl font-bold">SALES INVOICE</h2>
+			<p class="text-lg">Transaction Date: {new Date().toLocaleDateString()}</p>
+			<p class="text-lg">Transaction Time: {new Date().toLocaleTimeString()}</p>
+			<p class="text-lg">Cashier Name: {cashierName}</p>
+			<p class="text-lg">Receipt Number: {orderNumber}</p>
+			<div class="mt-4">
+				<div class="flex justify-between font-semibold">
+					<h2 class="mt-4 text-lg">Items Ordered:</h2>
+					<span class="mt-4 text-lg">Price</span>
+				</div>
+				{#if orderedItems.length > 0}
+					{#each orderedItems as item}
+						<div class="flex justify-between border-b py-2">
+							<p class="font-normal">{item.order_name} {item.order_name2} x{item.order_quantity}</p>
+							<p class="text-right font-normal">₱{item.basePrice}.00</p>
+						</div>
+						{#if item.order_addons && item.order_addons_price != null && item.order_addons_price > 0}
+							<p class="font-normal">Addons:</p>
+							<div class="flex flex-col">
+								{#if item.order_addons}
+									<div class="flex justify-between">
+										<p class="font-normal">{item.order_addons}</p>
+										<p class="text-right font-normal">₱{item.order_addons_price}.00</p>
+									</div>
+								{/if}
+								{#if item.order_addons2}
+									<div class="flex justify-between">
+										<p class="font-normal">{item.order_addons2}</p>
+										<p class="text-right font-normal">₱{item.order_addons_price2}.00</p>
+									</div>
+								{/if}
+								{#if item.order_addons3}
+									<div class="flex justify-between">
+										<p class="font-normal">{item.order_addons3}</p>
+										<p class="text-right font-normal">₱{item.order_addons_price3}.00</p>
+									</div>
+								{/if}
+							</div>
+						{/if}
+					{/each}
+				{:else}
+					<p class="text-center text-gray-600">No items ordered yet.</p>
+				{/if}
+			</div>
+
+			<div class="mt-4 w-full rounded-lg p-2 shadow-md">
+				<div class="mb-4 flex w-full items-center justify-between border-b pb-2">
+					<p class="text-sm font-semibold text-gray-700">Subtotal:</p>
+					<p class="text-sm font-bold text-gray-800">₱{totalOrderedItemsPrice}</p>
+				</div>
+				<div class="flex w-full items-center justify-between border-b pb-1">
+					<p class="text-sm font-semibold text-gray-700">Total Discount:</p>
+					<p class="text-sm font-bold text-gray-800">₱{(totalOrderedItemsPrice * voucherDiscount / 100)}</p>
+				</div>
+				<div class="flex w-full items-center justify-between border-b pb-1">
+					<p class="text-sm font-semibold text-gray-700">Total:</p>
+					<p class="text-sm font-bold text-gray-800">₱{(
+						totalOrderedItemsPrice * (1 - voucherDiscount / 100)
+					).toFixed(2)}</p>
+				</div>
+				<div class="flex justify-between">
+					<p class="text-sm">Amount Paid:</p>
+					<span class="text-sm">₱{(parseFloat(payment) || 0)}</span>
+				</div>
+				<div class="flex justify-between">
+					<p class="text-sm">Change:</p>
+					<span class="text-sm">₱{(parseFloat(payment) - (totalOrderedItemsPrice * (1 - voucherDiscount / 100))).toFixed(2) || '0.00'}</span>
+				</div>
+				<div class="flex justify-between">
+					<p class="text-sm">Vatable Sales (V):</p>
+					<span class="text-sm">₱{(totalOrderedItemsPrice * 1.12).toFixed(2)}</span>
+				</div>
+				<div class="flex justify-between">
+					<p class="text-sm">VAT (12%):</p>
+					<span class="text-sm">₱{(totalOrderedItemsPrice * 0.12)}</span>
+				</div>
+				<div class="flex justify-between">
+					<p class="text-sm">VAT Exempt Sales:</p>
+					<span class="text-sm">₱0.00</span>
+				</div>
+				<div class="flex justify-between">
+					<p class="text-sm">VAT Zero-Rated Sales:</p>
+					<span class="text-sm">₱0.00</span>
+				</div>
+			</div>
+
+			<div class="mt-4 flex justify-center space-x-4">
+				<button on:click={printReceipt} class="rounded-md bg-blue-500 px-4 py-2 text-white transition hover:bg-blue-600">Checkout Bill</button>
+				<button on:click={() => isReceiptPopupVisible = false} class="rounded-md bg-red-500 px-4 py-2 text-white transition hover:bg-red-600">Cancel</button>
+			</div>
+			<p class="text-center mt-4 text-sm text-gray-600">Thank you for having your meal with us!</p>
 		</div>
 	</div>
 {/if}

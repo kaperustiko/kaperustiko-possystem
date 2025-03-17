@@ -132,7 +132,7 @@ if ($requestMethod === 'POST') {
         $tableNumber = $data['table_number']; // New variable for table number
         $orderStatus = "pending"; // Default order status
 
-        // Insert into total_sales
+        // Prepare and execute the insert statement for total_sales
         $stmt = $conn->prepare("INSERT INTO total_sales (receipt_number, date, time, cashier_name, items_ordered, total_amount, amount_paid, amount_change, order_take, table_number, order_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
         $stmt->bind_param("issssiiisis", $receiptNumber, $date, $time, $cashierName, $itemsOrderedJson, $totalAmount, $amountPaid, $change, $orderTake, $tableNumber, $orderStatus);
 
@@ -143,19 +143,8 @@ if ($requestMethod === 'POST') {
             echo json_encode(["error" => "Error saving receipt: " . $stmt->error]);
         }
         $stmt->close();
-
-        // Insert into que_orders
-        $stmt = $conn->prepare("INSERT INTO que_orders (receipt_number, date, time, items_ordered, total_amount, amount_paid, amount_change, order_take, table_number, order_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("ssssiiisis", $receiptNumber, $date, $time, $itemsOrderedJson, $totalAmount, $amountPaid, $change, $orderTake, $tableNumber, $orderStatus);
-
-        // Execute the statement
-        if ($stmt->execute()) {
-            echo json_encode(["message" => "Order queued successfully"]);
-        } else {
-            echo json_encode(["error" => "Error queuing order: " . $stmt->error]);
-        }
-        $stmt->close();
     }
+
 
     // Handle table reservation
     if (isset($data['reserve_date'])) {
@@ -177,11 +166,12 @@ if ($requestMethod === 'POST') {
 
     // Handle voucher insertion
     if (isset($data['voucher_code'])) {
-        $stmt = $conn->prepare("INSERT INTO vouchers (voucher_code, voucher_discount, voucher_deadline) VALUES (?, ?, ?)");
-        $stmt->bind_param("sds", 
+        $stmt = $conn->prepare("INSERT INTO vouchers (voucher_code, voucher_discount, voucher_deadline, voucher_description) VALUES (?, ?, ?, ?)");
+        $stmt->bind_param("sdss", 
             $data['voucher_code'], 
             $data['voucher_discount'],
-            $data['voucher_deadline']
+            $data['voucher_deadline'],
+            $data['voucher_description']
         );
 
         // Execute the statement

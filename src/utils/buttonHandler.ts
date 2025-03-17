@@ -7,12 +7,8 @@ export function handleButtonClick(key: string, index: number, orderedItems: any[
 	} else if (key === 'Void') {
 		voidOrder(index);
 	} else if (key === 'Place Order') {
-		if (!isDineIn && !isTakeOut) {
-			showAlert('Error: Please select either Dine In or Take Out.');
-			return; // Prevent further execution
-		}
 		const order_price = orderedItems.reduce((total, item) => {
-			const price = item.order_price ? parseFloat(item.order_price.toString().replace('₱', '').replace(',', '')) : 0;
+			const price = item.total_amount ? item.total_amount : 0;
 			return total + price;
 		}, 0);
 		console.log('Calculated Order Price:', order_price);

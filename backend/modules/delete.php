@@ -26,6 +26,13 @@ switch ($requestMethod) {
                     delete_sales_information($conn);
                     break;
 
+                case 'deleteVoucher':
+                    delete_voucher($conn);
+                    break;
+                case 'deleteTableOccupancy':
+                    delete_table_occupancy($conn);
+                    break;
+
                 case 'deleteReturn':
                     $return_id = $_GET['return_id'] ?? null;
                     if ($return_id) {
@@ -70,10 +77,6 @@ switch ($requestMethod) {
                     } else {
                         echo json_encode(["success" => false, "message" => "No table number provided"]);
                     }
-                    break;
-
-                default:
-                    echo json_encode(["status" => "error", "message" => "Invalid action"]);
                     break;
             }
         } else {
@@ -168,5 +171,37 @@ function delete_sales_information($conn) {
         $stmt->close();
     } else {
         echo json_encode(["success" => false, "message" => "No receipt number provided."]);
+    }
+}
+
+function delete_voucher($conn) {
+    $voucher_code = $_GET['voucher_code'] ?? null;
+    if ($voucher_code) {
+        $stmt = $conn->prepare("DELETE FROM vouchers WHERE voucher_code = ?");
+        $stmt->bind_param("s", $voucher_code);
+        if ($stmt->execute()) {
+            echo json_encode(["success" => true, "message" => "Voucher deleted successfully."]);
+        } else {
+            echo json_encode(["success" => false, "message" => "Error deleting voucher: " . $stmt->error]);
+        }
+        $stmt->close();
+    } else {
+        echo json_encode(["success" => false, "message" => "No voucher code provided."]);
+    }
+}
+
+function delete_table_occupancy($conn) {
+    $receipt_number = $_GET['receipt_number'] ?? null;
+    if ($receipt_number) {
+        $stmt = $conn->prepare("DELETE FROM que_orders WHERE que_order_no = ?");
+        $stmt->bind_param("i", $receipt_number);
+        if ($stmt->execute()) {
+            echo json_encode(["success" => true, "message" => "Table occupancy deleted successfully."]);
+        } else {
+            echo json_encode(["success" => false, "message" => "Error deleting table occupancy: " . $stmt->error]);
+        }
+        $stmt->close();
+    } else {
+        echo json_encode(["success" => false, "message" => "No table number provided."]);
     }
 }

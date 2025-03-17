@@ -211,4 +211,19 @@
             {/each}
         </div>
     </div>
+ 
+</div>
+<div class="column w-full bg-white mx-2 my-4 p-6 rounded-lg shadow-lg border border-gray-300 hover:shadow-xl transition-shadow duration-300 overflow-auto">
+    <h2 class="text-2xl font-bold mb-4 text-gray-800">Total Orders</h2>
+    <p class="text-gray-600">Total: {pendingItems.length + processingItems.length + doneItems.length}</p>
+</div>
+<div class="column w-full bg-white mx-2 my-4 p-6 rounded-lg shadow-lg border border-gray-300 hover:shadow-xl transition-shadow duration-300 overflow-auto">
+    <h2 class="text-2xl font-bold mb-4 text-gray-800">Chart 1</h2>
+    <!-- Placeholder for Chart 1 -->
+    <div class="h-48 bg-gray-200 rounded-lg"></div>
+</div>
+<div class="column w-full bg-white mx-2 my-4 p-6 rounded-lg shadow-lg border border-gray-300 hover:shadow-xl transition-shadow duration-300 overflow-auto">
+    <h2 class="text-2xl font-bold mb-4 text-gray-800">Chart 2</h2>
+    <!-- Placeholder for Chart 2 -->
+    <div class="h-48 bg-gray-200 rounded-lg"></div>
 </div>

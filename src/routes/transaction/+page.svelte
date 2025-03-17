@@ -610,7 +610,7 @@
           <div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
               <div class="bg-white p-6 rounded-lg shadow-lg max-w-md w-full">
                   <h3 class="text-xl font-bold text-gray-800">Remit Sales</h3>
-                  <p class="mt-2 text-gray-600">Total Sales for {selectedDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}: <span class="font-semibold">₱{totalSales.toFixed(2)}</span></p>
+                  <p class="mt-2 text-gray-600">Total Sales for ${selectedDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}: <span class="font-semibold">₱{totalSales.toFixed(2)}</span></p>
                   
                   <!-- Input for Shortage with Peso Sign -->
                   <div class="mt-4">
