@@ -35,10 +35,39 @@ try {
             $password = password_hash($_POST['password'], PASSWORD_DEFAULT); // Hash the password
             $contactNumber = $_POST['contactNumber'];
 
+            // Check if email already exists
+            $check_email = $conn->prepare("SELECT staff_no FROM `user-staff` WHERE email = ?");
+            $check_email->bind_param("s", $email);
+            $check_email->execute();
+            $check_email->store_result();
+            
+            if ($check_email->num_rows > 0) {
+                echo json_encode(["status" => "error", "message" => "Email already exists"]);
+                $check_email->close();
+                exit;
+            }
+            $check_email->close();
+            
+            // Check if contact number already exists
+            $check_contact = $conn->prepare("SELECT staff_no FROM `user-staff` WHERE contactNumber = ?");
+            $check_contact->bind_param("s", $contactNumber);
+            $check_contact->execute();
+            $check_contact->store_result();
+            
+            if ($check_contact->num_rows > 0) {
+                echo json_encode(["status" => "error", "message" => "Contact number already exists"]);
+                $check_contact->close();
+                exit;
+            }
+            $check_contact->close();
+            
+            // Generate waiter code - combination of first letter of first name, first letter of last name and 4 random digits
+            $waiter_code = strtoupper(substr($firstName, 0, 1) . substr($lastName, 0, 1)) . rand(1000, 9999);
+            
             // Prepare and bind for registration
-            $stmt = $conn->prepare("INSERT INTO `user-staff` (firstName, lastName, middleName, email, password, contactNumber, avatar) VALUES (?, ?, ?, ?, ?, ?, ?)");
+            $stmt = $conn->prepare("INSERT INTO `user-staff` (firstName, lastName, middleName, email, password, contactNumber, avatar, waiter_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
             $avatar = 'default.jpg'; // Default avatar
-            $stmt->bind_param("sssssss", $firstName, $lastName, $middleName, $email, $password, $contactNumber, $avatar);
+            $stmt->bind_param("ssssssss", $firstName, $lastName, $middleName, $email, $password, $contactNumber, $avatar, $waiter_code);
 
             // Execute the statement
             if ($stmt->execute()) {
@@ -52,9 +81,9 @@ try {
                 $update_stmt->execute();
                 $update_stmt->close();
 
-                echo "Registration successful!";
+                echo json_encode(["status" => "success", "message" => "Registration successful!", "waiter_code" => $waiter_code]);
             } else {
-                echo "Error: " . $stmt->error;
+                echo json_encode(["status" => "error", "message" => "Error: " . $stmt->error]);
             }
 
             $stmt->close();

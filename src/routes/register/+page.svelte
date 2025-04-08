@@ -49,14 +49,43 @@
             })
         });
 
-        const result = await response.text();
-        console.log(result);
+        try {
+            const result = await response.text();
+            let jsonResult;
+            
+            try {
+                jsonResult = JSON.parse(result);
+            } catch (e) {
+                // If response is not JSON, handle as before
+                if (result.includes("success")) {
+                    showAlert('Registration Successful', 'success');
+                    setTimeout(() => {
+                        window.location.href = '/login';
+                    }, 3000);
+                }
+                return;
+            }
 
-        if (result.includes("success")) {
-            showAlert('Registration Successful', 'success');
-            setTimeout(() => {
-                window.location.href = '/login'; // Redirect to login page after 3 seconds
-            }, 3000); // 3000 milliseconds = 3 seconds
+            if (jsonResult.status === 'success') {
+                // Show success message with waiter code
+                showAlert(`Registration Successful! Your waiter code is: ${jsonResult.waiter_code}`, 'success');
+                setTimeout(() => {
+                    window.location.href = '/login'; // Redirect to login page after 3 seconds
+                }, 5000); // 5000 milliseconds = 5 seconds (giving extra time to see the waiter code)
+            } else if (jsonResult.status === 'error') {
+                // Handle specific error messages
+                if (jsonResult.message.includes("Email already exists")) {
+                    emailError = 'Email already exists';
+                } else if (jsonResult.message.includes("Contact number already exists")) {
+                    contactNumberError = 'Contact number already exists';
+                } else {
+                    // General error
+                    showAlert(jsonResult.message, 'error');
+                }
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            showAlert('An error occurred during registration', 'error');
         }
     }
 
