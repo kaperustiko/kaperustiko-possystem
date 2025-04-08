@@ -205,6 +205,13 @@
 			showAlert('Cannot place order. Total cost is null or zero.', 'error'); // Use showAlert for
 			return; // Exit the function
 		}
+		
+		// Check if no table is selected
+		if (!selectedTableNumber) {
+			showAlert('Please select a table number before placing an order.', 'error'); // Alert for no table selected
+			return; // Exit the function
+		}
+		
 		// Fetch cashier name when place order is clicked
 		fetchCashierName(); // Call to fetch cashier name
 		// Log the codes of all ordered items
