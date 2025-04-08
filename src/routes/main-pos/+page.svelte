@@ -255,6 +255,18 @@
 			showAlert('No items ordered yet. Please add items to your order.', 'error');
 			return; // Exit the function if no items are ordered
 		}
+
+		// Validate payment amount before proceeding
+		const totalCost = (
+			((totalOrderedItemsPrice || 0) * 1.12 || 0) * (1 - (voucherDiscount || 0) / 100) + 
+			((totalOrderedItemsPrice * 1.12 || 0) * 0.10)
+		).toFixed(2);
+
+		if (parseFloat(payment) < parseFloat(totalCost)) {
+			showAlert('Invalid amount. Please enter an amount equal to or greater than the total cost.', 'error');
+			return; // Exit the function if payment is invalid
+		}
+
 		isReceiptPopupVisible = true; // Show the receipt popup
 	}
 
@@ -628,7 +640,7 @@
 					<input
 						type="text"
 						bind:value={voucherCode}
-						class="text-sm font-bold text-gray-800 flex-grow mr-2 w-[70%]"
+						class="text-sm font-bold text-gray-800 flex-grow mr-2 w-[60%]"
 						placeholder="Enter code"
 					/>
 					<button
@@ -640,21 +652,21 @@
 				</div>
 				<div class="flex w-full items-center justify-between border-b pb-1">
 					<p class="text-sm font-semibold text-gray-700">VAT (12%):</p>
-					<p class="text-sm font-bold text-gray-800">₱{(typeof totalOrderedItemsPrice === 'number' ? totalOrderedItemsPrice : 0)}</p>
+					<p class="text-sm font-bold text-gray-800">₱{((totalOrderedItemsPrice * 0.12) || 0).toFixed(2)}</p>
 				</div>
 				<div class="flex w-full items-center justify-between border-b pb-1">
-					<p class="text-sm font-semibold text-gray-700">Service Charge:</p>
-					<p class="text-sm font-bold text-gray-800">₱20.00</p>
+					<p class="text-sm font-semibold text-gray-700">Service Charge (10%):</p>
+					<p class="text-sm font-bold text-gray-800">₱{((totalOrderedItemsPrice * 1.12 || 0) * 0.10).toFixed(2)}</p>
 				</div>
 				<div class="mb-2 flex w-full items-center justify-between border-b pb-1">
 					<p class="text-sm font-semibold text-gray-700">Voucher Discount:</p>
-					<p class="text-sm font-bold text-gray-800">{voucherDiscount}%</p>
+					<p class="text-sm font-bold text-gray-800">{voucherDiscount || 0}%</p>
 				</div>
 				<div class="mb-2 flex w-full items-center justify-between border-b pb-1">
 					<p class="text-md font-semibold text-gray-700">Total Cost:</p>
 					<p class="text-md font-bold text-gray-800">
 						₱{(
-							(totalOrderedItemsPrice * 1.12 + 20) * (1 - voucherDiscount / 100)
+							((totalOrderedItemsPrice || 0) * 1.12 || 0) * (1 - (voucherDiscount || 0) / 100) + ((totalOrderedItemsPrice * 1.12 || 0) * 0.10)
 						).toFixed(2)}
 					</p>
 				</div>
@@ -665,14 +677,13 @@
 				<div class="flex justify-between">
 					<p class="text-sm">Change:</p>
 					<span class="text-sm">
-						₱{Math.max(0, parseFloat((parseFloat(payment) - (totalOrderedItemsPrice * 1.12 + 20)).toFixed(2)))}
+						₱{Math.max(0, parseFloat(((parseFloat(payment) || 0) - ((totalOrderedItemsPrice * 1.12 || 0) + 20 + ((totalOrderedItemsPrice * 1.12 || 0) * 0.10))).toFixed(2)))}
 					</span>
 				</div>
 			</div>
 
 			<div class="w-full">
 				<div class="mb-4">
-					<label for="payment-input" class="block text-sm font-medium text-gray-700 mb-1">Enter Payment Amount</label>
 					<input
 						id="payment-input"
 						type="text"
@@ -682,6 +693,14 @@
 						on:input={() => {
 							// Store in localStorage to maintain compatibility with other functions
 							localStorage.setItem('payment', payment);
+							// Validate payment amount
+							const totalCost = (
+								((totalOrderedItemsPrice || 0) * 1.12 || 0) * (1 - (voucherDiscount || 0) / 100) + 
+								((totalOrderedItemsPrice * 1.12 || 0) * 0.10)
+							).toFixed(2);
+							if (parseFloat(payment) < parseFloat(totalCost)) {
+								showAlert('Invalid amount. Please enter an amount equal to or greater than the total cost.', 'error');
+							}
 						}}
 					/>
 				</div>
@@ -752,7 +771,7 @@
 						}}
 						class="rounded py-3 font-bold text-white bg-blue-600 hover:bg-blue-700 col-span-2"
 					>
-						Enter Payment
+						Checkout Bill
 					</button>
 				</div>
 			</div>
@@ -920,9 +939,13 @@
 					<p class="text-sm font-bold text-gray-800">₱{(totalOrderedItemsPrice * voucherDiscount / 100)}</p>
 				</div>
 				<div class="flex w-full items-center justify-between border-b pb-1">
+					<p class="text-sm font-semibold text-gray-700">Service Charge (10%):</p>
+					<p class="text-sm font-bold text-gray-800">₱{((totalOrderedItemsPrice * 1.12) * 0.10).toFixed(2)}</p>
+				</div>
+				<div class="flex w-full items-center justify-between border-b pb-1">
 					<p class="text-sm font-semibold text-gray-700">Total:</p>
 					<p class="text-sm font-bold text-gray-800">₱{(
-						totalOrderedItemsPrice * (1 - voucherDiscount / 100)
+						totalOrderedItemsPrice * (1 - voucherDiscount / 100) + ((totalOrderedItemsPrice * 1.12) * 0.10)
 					).toFixed(2)}</p>
 				</div>
 				<div class="flex justify-between">
@@ -931,7 +954,13 @@
 				</div>
 				<div class="flex justify-between">
 					<p class="text-sm">Change:</p>
-					<span class="text-sm">₱{(parseFloat(payment) - (totalOrderedItemsPrice * (1 - voucherDiscount / 100))).toFixed(2) || '0.00'}</span>
+					<span class="text-sm">
+						₱{Math.max(0, parseFloat(((parseFloat(payment) || 0) - ((totalOrderedItemsPrice * 1.12 || 0) + 20 + ((totalOrderedItemsPrice * 1.12) * 0.10))).toFixed(2)))}
+					</span>
+				</div>
+				<div class="flex justify-between">
+					<p class="text-sm">Service Charge (SC):</p>
+					<span class="text-sm">₱{((totalOrderedItemsPrice * 1.12) * 0.10).toFixed(2)}</span>
 				</div>
 				<div class="flex justify-between">
 					<p class="text-sm">Vatable Sales (V):</p>
@@ -939,7 +968,7 @@
 				</div>
 				<div class="flex justify-between">
 					<p class="text-sm">VAT (12%):</p>
-					<span class="text-sm">₱{(totalOrderedItemsPrice * 0.12)}</span>
+					<span class="text-sm">₱{((totalOrderedItemsPrice * 0.12) || 0).toFixed(2)}</span>
 				</div>
 				<div class="flex justify-between">
 					<p class="text-sm">VAT Exempt Sales:</p>

@@ -19,7 +19,7 @@ export function handleButtonClick(key: string, index: number, orderedItems: any[
 		if (!payment || amountPaid <= 0) {
 			showAlert('Error: No amount paid yet.');
 		} else if (amountPaid < order_price) {
-			showAlert('Error: Amount paid is not enough.');
+			showAlert('Error: Not enough amount.');
 		} else if (amountPaid >= order_price) {
 			handlePlaceOrder();
 		}
