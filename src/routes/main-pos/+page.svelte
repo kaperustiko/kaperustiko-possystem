@@ -670,27 +670,67 @@
 				</div>
 			</div>
 
-			<div class="grid h-[400px] w-full grid-cols-4 gap-2">
-				{#each ['7', '8', '9', '⌫', '4', '5', '6', 'Clr', '1', '2', '3', 'Void', '0', '00', 'Place Order'] as key, index}
+			<div class="w-full">
+				<div class="mb-4">
+					<label for="payment-input" class="block text-sm font-medium text-gray-700 mb-1">Enter Payment Amount</label>
+					<input
+						id="payment-input"
+						type="text"
+						bind:value={payment}
+						placeholder="Enter amount"
+						class="w-full rounded-md border border-gray-300 p-3 text-gray-800 focus:border-blue-500 focus:ring-blue-500"
+						on:input={() => {
+							// Store in localStorage to maintain compatibility with other functions
+							localStorage.setItem('payment', payment);
+						}}
+					/>
+				</div>
+				
+				<div class="grid grid-cols-2 gap-4">
 					<button
 						on:click={() => {
-							clickedKey = key; // Set the clicked key
-							if (key === 'Clr') {
-								localStorage.removeItem('payment'); // Clear all numbers in local storage
-								console.log('Cleared all numbers from local storage');
-							} else if (key === '⌫') {
-								const currentPayment = localStorage.getItem('payment') || '';
-								localStorage.setItem('payment', currentPayment.slice(0, -1)); // Delete last number
-								
-							} else if (key === 'Void') {
-								location.reload(); // Reload the page when Void is clicked
-							} else {
-								const currentPayment = localStorage.getItem('payment') || '';
-								localStorage.setItem('payment', currentPayment + key); // Store number in local storage
-							}
+							// Clear functionality
+							payment = '';
+							localStorage.removeItem('payment');
+							handleClear();
+							
+							currentInputStore.update((store) => {
+								return {
+									...store,
+									currentInput: 'Clr',
+									amountPaid: 0
+								};
+							});
+						}}
+						class="rounded py-3 font-bold text-gray-800 bg-gray-200 hover:bg-gray-300"
+					>
+						Clear
+					</button>
+					
+					<button
+						on:click={() => {
+							// Void functionality
+							voidOrder(0);
+							
+							currentInputStore.update((store) => {
+								return {
+									...store,
+									currentInput: 'Void',
+									amountPaid: parseFloat(amountPaid.replace('₱', '').replace(',', ''))
+								};
+							});
+						}}
+						class="rounded py-3 font-bold text-white bg-red-900 hover:bg-red-800"
+					>
+						Void
+					</button>
+					
+					<button
+						on:click={() => {
+							// Place Order functionality
 							handleButtonClick(
-								key,
-								index,
+								'Place Order',
+								0,
 								orderedItems,
 								payment,
 								handleBackspace,
@@ -701,19 +741,20 @@
 								isDineIn,
 								isTakeOut
 							);
+							
 							currentInputStore.update((store) => {
 								return {
 									...store,
-									currentInput: key, // Update the current input
+									currentInput: 'Place Order',
 									amountPaid: parseFloat(amountPaid.replace('₱', '').replace(',', ''))
 								};
 							});
 						}}
-						class={`rounded py-2 font-bold text-gray-800 col-span-${key === 'Place Order' ? '2' : '1'} ${key === 'Void' ? 'bg-red-900 text-white' : ''} ${clickedKey === key ? 'bg-gray-300' : ''}`}
+						class="rounded py-3 font-bold text-white bg-blue-600 hover:bg-blue-700 col-span-2"
 					>
-						{key}
+						Enter Payment
 					</button>
-				{/each}
+				</div>
 			</div>
 		</div>
 	</div>
