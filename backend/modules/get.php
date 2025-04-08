@@ -493,6 +493,73 @@ function getMonthlySales($conn) {
     echo json_encode($monthlySales);
 }
 
+// Function to get table order details
+function getTableOrderDetails($conn)
+{
+    // Check if table_number parameter is provided
+    if (isset($_GET['table_number'])) {
+        $table_number = $_GET['table_number'];
+        
+        // Query to get all orders for this table
+        $sql = "SELECT que_order_no, receipt_number, date, time, items_ordered, total_amount, 
+                amount_paid, amount_change, order_take, order_status, waiter_name, waiter_code 
+                FROM que_orders 
+                WHERE table_number = ? 
+                ORDER BY receipt_number ASC";
+        
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("s", $table_number);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
+        $formattedItems = [];
+        
+        while ($row = $result->fetch_assoc()) {
+            // Decode the JSON items_ordered string to an array
+            $itemsOrdered = json_decode($row['items_ordered'], true);
+            
+            if (is_array($itemsOrdered)) {
+                foreach ($itemsOrdered as $item) {
+                    // Format each item with receipt info
+                    $formattedItem = [
+                        'receipt_number' => $row['receipt_number'],
+                        'order_status' => $row['order_status'],
+                        'waiter_name' => $row['waiter_name'],
+                        'waiter_code' => $row['waiter_code'],
+                        'date' => $row['date'],
+                        'time' => $row['time'],
+                        'order_name' => isset($item['order_name']) ? $item['order_name'] : '',
+                        'order_size' => isset($item['order_size']) ? $item['order_size'] : '',
+                        'order_quantity' => isset($item['order_quantity']) ? str_replace('x', '', $item['order_quantity']) : 1,
+                        'order_addons' => isset($item['order_addons']) ? $item['order_addons'] : 'None',
+                        'order_addons_price' => isset($item['order_addons_price']) ? $item['order_addons_price'] : 0,
+                        'order_addons2' => isset($item['order_addons2']) ? $item['order_addons2'] : 'None',
+                        'order_addons_price2' => isset($item['order_addons_price2']) ? $item['order_addons_price2'] : 0,
+                        'order_addons3' => isset($item['order_addons3']) ? $item['order_addons3'] : 'None',
+                        'order_addons_price3' => isset($item['order_addons_price3']) ? $item['order_addons_price3'] : 0,
+                        'delivered' => isset($item['delivered']) ? $item['delivered'] : "0"
+                    ];
+                    
+                    // Calculate item total price (base price + addons)
+                    $basePrice = isset($item['basePrice']) ? $item['basePrice'] : 0;
+                    $quantity = intval(str_replace('x', '', $formattedItem['order_quantity']));
+                    $addonsPrice = $formattedItem['order_addons_price'] + $formattedItem['order_addons_price2'] + $formattedItem['order_addons_price3'];
+                    $formattedItem['item_total_price'] = ($basePrice + $addonsPrice) * $quantity;
+                    
+                    $formattedItems[] = $formattedItem;
+                }
+            }
+        }
+        
+        header('Content-Type: application/json');
+        echo json_encode($formattedItems);
+    } else {
+        // Return error if table_number is not provided
+        header('Content-Type: application/json');
+        echo json_encode(['error' => 'Table number is required']);
+    }
+}
+
 // Route handling based on request type
 $requestMethod = $_SERVER['REQUEST_METHOD'];
 switch ($requestMethod) {
@@ -576,6 +643,9 @@ switch ($requestMethod) {
                     break;
                 case 'getVouchersbyCode':
                     getVouchersbyCode($conn);
+                    break;
+                case 'getTableOrderDetails':
+                    getTableOrderDetails($conn);
                     break;
                 default:
                     echo json_encode(["status" => "error", "message" => "Invalid action"]);
