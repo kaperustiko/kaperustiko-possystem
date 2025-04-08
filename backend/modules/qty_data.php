@@ -5,23 +5,7 @@ header("Access-Control-Allow-Headers: Content-Type"); // Allow specific headers
 header('Content-Type: application/json');
 
 // Database connection parameters
-$host = 'localhost';
-$db = 'kaperustiko-pos';
-$user = 'root'; // Replace with your database username
-$pass = ''; // Replace with your database password
-
-// Create a connection
-$conn = new mysqli($host, $user, $pass, $db);
-
-// Check connection
-if ($conn->connect_error) {
-    die(json_encode(["status" => "error", "message" => "Connection failed: " . $conn->connect_error]));
-}
-
-// Check if 'code' and 'order_quantity' are set in the GET request
-if (!isset($_GET['code']) || !isset($_GET['order_quantity'])) {
-    die(json_encode(["status" => "error", "message" => "Code or order_quantity parameter is missing."]));
-}
+include '../config/connection.php';
 
 $code = $_GET['code']; // Replace with the specific code you want to update
 $order_quantity = intval($_GET['order_quantity']); // Get the order quantity from the request

@@ -359,7 +359,7 @@
 			localStorage.setItem('staff_token', staffToken); // Restore staff_token
 		}
 
-		// window.location.reload(); // Removed the refresh call
+		window.location.reload(); // Removed the refresh call
 	}
 
 	function showAlert(message: string, type: string) {
