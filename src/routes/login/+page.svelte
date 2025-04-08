@@ -45,7 +45,6 @@
 			
 			// New lines to open additional windows
 			window.open('/waiter-monitor', '_blank', 'location=no,menubar=no,scrollbars=no,status=no,resizable=no'); // Opens waiter monitor
-			window.open('/kitchen-monitor', '_blank', 'location=no,menubar=no,scrollbars=no,status=no,resizable=no'); // Opens kitchen monitor
 		} else {
 			// Reset error messages
 			emailError = '';
