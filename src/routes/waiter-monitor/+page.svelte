@@ -63,7 +63,7 @@
 
 	let orderedItems: OrderedItem[] = [];
 
-	// Function to fetch orders
+	// Function to fetch orders - modify to merge duplicates
 	async function fetchOrders() {
 		if (isFetching) return; // Prevent multiple fetch calls
 		isFetching = true; // Set fetching flag
@@ -71,12 +71,40 @@
 		const response = await fetch(
 			'http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getOrders'
 		);
+		
 		if (response.ok) {
 			const textResponse = await response.text(); // Get response as text
 			try {
-				const orders = JSON.parse(textResponse); // Attempt to parse JSON
-				orderedItemsStore.set(orders);
-				orderedItems = orders; // Update the orderedItems state
+				const fetchedOrders = JSON.parse(textResponse); // Attempt to parse JSON
+				
+				// Create a map to merge duplicate items
+				const mergedItems = new Map();
+				
+				// First, process all fetched orders
+				fetchedOrders.forEach((item: OrderedItem) => {
+					// Create a unique key based on item properties
+					const itemKey = `${item.code}-${item.order_size}-${item.order_addons}-${item.order_addons2}-${item.order_addons3}-${item.special_instructions || ''}`;
+					
+					if (mergedItems.has(itemKey)) {
+						// If we already have this item, increment quantity and update price
+						const existingItem = mergedItems.get(itemKey);
+						existingItem.order_quantity += item.order_quantity;
+						existingItem.order_price += item.order_price;
+					} else {
+						// Otherwise, add the item to our map
+						mergedItems.set(itemKey, {...item});
+					}
+				});
+				
+				// Convert the map values to an array
+				const mergedOrdersArray = Array.from(mergedItems.values());
+				
+				// Now assign the merged array to our state
+				orderedItemsStore.set(mergedOrdersArray);
+				orderedItems = mergedOrdersArray;
+				
+				// Ensure local storage is updated
+				localStorage.setItem('orderedItems', JSON.stringify(mergedOrdersArray));
 			} catch (error) {
 				console.error('Failed to parse JSON:', error, 'Response:', textResponse);
 			}
@@ -495,9 +523,9 @@
 
 		const totalAddonsPrice = selectedAddons.reduce((total, addon) => {
 			const addonPrice =
-				parseFloat(calculateAddonsPrice([addon]).replace('₱', '').replace(',', '')) || 0; // Calculate price for each addon
-			return total + addonPrice; // Sum up the prices
-		}, 0); // Initialize total to 0
+				parseFloat(calculateAddonsPrice([addon]).replace('₱', '').replace(',', '')) || 0;
+			return total + addonPrice;
+		}, 0);
 
 		// Check if this item already exists in the cart with the same specifications
 		const existingItemIndex = orderedItems.findIndex(existingItem => 
@@ -506,101 +534,96 @@
 			existingItem.order_addons === (selectedAddons.length > 0 ? selectedAddons[0] : 'None') &&
 			existingItem.order_addons2 === (selectedAddons.length > 1 ? selectedAddons[1] : 'None') &&
 			existingItem.order_addons3 === (selectedAddons.length > 2 ? selectedAddons[2] : 'None') &&
-			existingItem.special_instructions === specialInstructions // Also check if special instructions match
+			existingItem.special_instructions === specialInstructions
 		);
 
-		const totalOrderPrice = basePrice * quantity + totalAddonsPrice; // Calculate total price
-
-		// Prepare data to send to the server
-		type OrderData = {
-			order_name: string;
-			order_name2: string;
-			order_quantity: number;
-			order_size: string;
-			order_price: number;
-			order_image: string;
-			order_addons?: string;
-			order_addons_price?: number;
-			order_addons2?: string;
-			order_addons_price2?: number;
-			order_addons3?: string;
-			order_addons_price3?: number;
-			basePrice: number;
-			code: string;
-			table_number: string;
-			special_instructions: string; // Add special instructions field
-		};
-
-		// Create the order data
-		const orderData: OrderData = {
+		// Create the basic order data
+		const orderData = {
 			order_name: item.title1,
 			order_name2: item.title2,
 			order_quantity: quantity,
-			order_size: selectedSize,
-			order_price: totalOrderPrice, // Calculate total price as a number
-			order_image: item.image,
-			basePrice: basePrice, // Original price without quantity or addons
-			// Add-ons handling
-			order_addons: selectedAddons.length > 0 ? selectedAddons[0] : 'None',
-			order_addons_price:
-				selectedAddons.length > 0
-					? parseFloat(calculateAddonsPrice([selectedAddons[0]]).replace('₱', '').replace(',', ''))
-					: 0,
-			order_addons2: selectedAddons.length > 1 ? selectedAddons[1] : 'None',
-			order_addons_price2:
-				selectedAddons.length > 1
-					? parseFloat(calculateAddonsPrice([selectedAddons[1]]).replace('₱', '').replace(',', ''))
-					: 0,
-			order_addons3: selectedAddons.length > 2 ? selectedAddons[2] : 'None',
-			order_addons_price3:
-				selectedAddons.length > 2
-					? parseFloat(calculateAddonsPrice([selectedAddons[2]]).replace('₱', '').replace(',', ''))
-					: 0,
-			code: item.code,
-			table_number: selectedTableNumber,
-			special_instructions: specialInstructions // Add special instructions field
+				order_size: selectedSize,
+				order_price: (basePrice + totalAddonsPrice) * quantity,
+				order_image: item.image,
+				basePrice: basePrice,
+				order_addons: selectedAddons.length > 0 ? selectedAddons[0] : 'None',
+				order_addons_price:
+					selectedAddons.length > 0
+						? parseFloat(calculateAddonsPrice([selectedAddons[0]]).replace('₱', '').replace(',', ''))
+						: 0,
+				order_addons2: selectedAddons.length > 1 ? selectedAddons[1] : 'None',
+				order_addons_price2:
+					selectedAddons.length > 1
+						? parseFloat(calculateAddonsPrice([selectedAddons[1]]).replace('₱', '').replace(',', ''))
+						: 0,
+				order_addons3: selectedAddons.length > 2 ? selectedAddons[2] : 'None',
+				order_addons_price3:
+					selectedAddons.length > 2
+						? parseFloat(calculateAddonsPrice([selectedAddons[2]]).replace('₱', '').replace(',', ''))
+						: 0,
+				code: item.code,
+				table_number: selectedTableNumber,
+				special_instructions: specialInstructions
 		};
 
-		// If the item already exists, update the quantity and price instead of adding a new item
 		if (existingItemIndex !== -1) {
-			// First, remove the existing item from the database
+			// Item exists, update quantity
 			const existingItem = orderedItems[existingItemIndex];
+			const newQuantity = existingItem.order_quantity + quantity;
+			const unitPrice = basePrice + totalAddonsPrice;
 			
+			// Create updated order data
+			const updatedOrderData = {
+				...orderData,
+				order_quantity: newQuantity,
+				order_price: unitPrice * newQuantity
+			};
+			
+			// Update state with the new item quantity
+			const updatedItems = [...orderedItems];
+			updatedItems[existingItemIndex] = {
+				...existingItem,
+				order_quantity: newQuantity,
+				order_price: unitPrice * newQuantity
+			};
+			
+			// Update locally first
+			orderedItems = updatedItems;
+			localStorage.setItem('orderedItems', JSON.stringify(updatedItems));
+			
+			// Then delete the old item and add updated one
 			fetch(
-				`http://localhost/kaperustiko-possystem/backend/modules/delete.php?action=voidOrder&order_name=${encodeURIComponent(existingItem.order_name)}&order_size=${encodeURIComponent(existingItem.order_size)}&index=${existingItemIndex}`,
-				{
-					method: 'DELETE'
-				}
-			).then((response) => response.json())
+				`http://localhost/kaperustiko-possystem/backend/modules/delete.php?action=deleteAllOrders`, 
+				{ method: 'DELETE' }
+			)
 			.then(() => {
-				// Update the quantity and price - ensure numeric addition with parseInt
-				const currentQuantity = Number(existingItem.order_quantity);
-				const qtyToAdd = Number(quantity);
-				const newQuantity = currentQuantity + qtyToAdd;
-				
-				// Update the orderData with the new quantity and recalculated price
-				orderData.order_quantity = newQuantity;
-				orderData.order_price = (basePrice * newQuantity) + (totalAddonsPrice * newQuantity / qtyToAdd);
-				
-				// Update the local state
-				const updatedItems = [...orderedItems];
-				updatedItems[existingItemIndex] = {
-					...existingItem,
-					order_quantity: newQuantity,
-					order_price: orderData.order_price
-				};
-				
-				// Save the order with updated quantity to the database
-				saveOrderToDatabase(orderData, updatedItems);
+				// Add all items back to the database
+				Promise.all(
+					updatedItems.map(item => {
+						return fetch('http://localhost/kaperustiko-possystem/backend/modules/insert.php?action=save_order', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify(item)
+						});
+					})
+				)
+				.then(() => {
+					console.log('Order updated with new quantity');
+					closePopup();
+				})
+				.catch(error => {
+					console.error('Error updating orders:', error);
+				});
 			})
-			.catch((error) => {
-				console.error('Error updating order quantity:', error);
-				// If deletion fails, add as a new item as fallback
-				saveOrderToDatabase(orderData, [...orderedItems]);
+			.catch(error => {
+				console.error('Error clearing orders:', error);
+				// Fallback to just adding the updated item
+				saveOrderToDatabase(updatedOrderData, updatedItems);
 			});
 		} else {
-			// Item doesn't exist, add as new
-			saveOrderToDatabase(orderData, [...orderedItems]);
+			// New item - just add it
+			const updatedItems = [...orderedItems, orderData];
+			saveOrderToDatabase(orderData, updatedItems);
 		}
 	}
 	
@@ -623,15 +646,21 @@
 		})
 		.then((data) => {
 			console.log(data.message);
+			
+			// Update local state with the updated items
 			orderedItems = updatedItems;
+			
+			// Update in the store too
+			orderedItemsStore.set(updatedItems);
+			
 			// Save the order to localStorage
-			localStorage.setItem('orderedItems', JSON.stringify(orderedItems));
+			localStorage.setItem('orderedItems', JSON.stringify(updatedItems));
 		})
 		.catch((error) => {
 			console.error('Error saving order:', error);
 		})
 		.finally(() => {
-			fetchOrders();
+			// Reset UI state
 			selectedItem = null;
 			selectedSize = 'Regular';
 			selectedAddons = [];
@@ -654,11 +683,27 @@
 		
 		const item = orderedItems[index];
 		
+		// Create a unique identifier with all relevant details
+		const orderIdentifier = {
+			order_name: item.order_name,
+			order_size: item.order_size,
+			order_addons: item.order_addons,
+			order_addons2: item.order_addons2,
+			order_addons3: item.order_addons3,
+			code: item.code,
+			special_instructions: item.special_instructions,
+			index: index
+		};
+		
 		// First, remove the existing item from the database
 		fetch(
 			`http://localhost/kaperustiko-possystem/backend/modules/delete.php?action=voidOrder&order_name=${encodeURIComponent(item.order_name)}&order_size=${encodeURIComponent(item.order_size)}&index=${index}`,
 			{
-				method: 'DELETE'
+				method: 'DELETE',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify(orderIdentifier)
 			}
 		).then((response) => response.json())
 		.then(() => {
@@ -703,10 +748,12 @@
 			})
 			.catch((error) => {
 				console.error('Error updating order:', error);
+				fetchOrders(); // Refresh in case of error
 			});
 		})
 		.catch((error) => {
 			console.error('Error updating order quantity:', error);
+			fetchOrders(); // Refresh in case of error
 		});
 	}
 
@@ -760,24 +807,48 @@
 	}
 
 	function voidOrder(index: number) {
-		const orderToVoid = orderedItems[index]; // Get the order to void
-		orderedItems.splice(index, 1); // Remove from local array
-		localStorage.setItem('orderedItems', JSON.stringify(orderedItems)); // Update localStorage after voiding
+		const orderToVoid = orderedItems[index];
+		
+		// Create a unique identifier with all relevant details
+		const orderIdentifier = {
+			order_name: orderToVoid.order_name,
+			order_size: orderToVoid.order_size,
+			order_addons: orderToVoid.order_addons,
+			order_addons2: orderToVoid.order_addons2,
+			order_addons3: orderToVoid.order_addons3,
+			code: orderToVoid.code,
+			special_instructions: orderToVoid.special_instructions,
+			index: index  // Include index for tracking
+		};
+		
+		// First update the local state for immediate UI feedback
+		const updatedItems = [...orderedItems];
+		updatedItems.splice(index, 1);
+		orderedItems = updatedItems;
+		localStorage.setItem('orderedItems', JSON.stringify(orderedItems));
 
-		// Send request to backend to delete the order - include both code and size to identify the specific item
+		// Then send request to backend with detailed information in both URL and body
 		fetch(
 			`http://localhost/kaperustiko-possystem/backend/modules/delete.php?action=voidOrder&order_name=${encodeURIComponent(orderToVoid.order_name)}&order_size=${encodeURIComponent(orderToVoid.order_size)}&index=${index}`,
 			{
-				method: 'DELETE'
+				method: 'DELETE',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify(orderIdentifier)
 			}
 		)
-			.then((response) => response.json())
-			.then((data) => {
-				console.log('Order voided:', data);
-			})
-			.catch((error) => {
-				console.error('Error voiding order:', error);
-			});
+		.then((response) => response.json())
+		.then((data) => {
+			console.log('Order voided:', data);
+			// Refresh orders in case there was a partial update
+			fetchOrders();
+		})
+		.catch((error) => {
+			console.error('Error voiding order:', error);
+			// On error, restore the item or refresh all orders
+			fetchOrders();
+		});
 	}
 
 	function handleBackspace() {
