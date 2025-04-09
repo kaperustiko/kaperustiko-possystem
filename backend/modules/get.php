@@ -698,6 +698,26 @@ function getOrderItemsByReceipt($conn)
     }
 }
 
+// Function to get waiter information by code
+function getWaiterByCode($conn)
+{
+    $waiter_code = isset($_GET['waiter_code']) ? $_GET['waiter_code'] : ''; // Retrieve waiter_code from query parameters
+    $query = "SELECT firstName, lastName FROM `user-staff` WHERE waiter_code = ?"; // Adjusted the query to include a comma
+    $stmt = $conn->prepare($query);
+    $stmt->bind_param("s", $waiter_code);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    if ($result->num_rows > 0) {
+        $waiterData = $result->fetch_assoc();
+        echo json_encode($waiterData); // Return the waiter's first name and last name as JSON
+    } else {
+        echo json_encode(["error" => "Waiter code not found."]); // Return an error if no waiter is found
+    }
+    
+    $stmt->close();
+}
+
 // Route handling based on request type
 $requestMethod = $_SERVER['REQUEST_METHOD'];
 switch ($requestMethod) {
@@ -787,6 +807,9 @@ switch ($requestMethod) {
                     break;
                 case 'getOrderItemsByReceipt':
                     getOrderItemsByReceipt($conn);
+                    break;
+                case 'getWaiterByCode':
+                    getWaiterByCode($conn);
                     break;
                 default:
                     echo json_encode(["status" => "error", "message" => "Invalid action"]);

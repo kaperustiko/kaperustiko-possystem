@@ -28,9 +28,8 @@
 	let selectedTableNumber: string = ''; // Declare the variable
 	
 	let isWaiterCodePopupVisible = false; // Add this for waiter code popup
-	let waiterCode = '123456'; // Variable to store waiter code
+	let waiterCode = ''; // Variable to store waiter code
 	let waiterName = ''; // Variable to store waiter name
-
 	let change = 0; // Set default change to 0
 
 	let isConfirmVoidVisible = false; // State for confirmation modal
@@ -258,29 +257,51 @@
 		isWaiterCodePopupVisible = true;
 	}
 
-	function verifyWaiterCode() {
-		if (waiterCode.length < 4) {
-			showAlert('Please enter a valid waiter code (min 4 digits)', 'error');
+	async function verifyWaiterCode() {
+		console.log("Verify Waiter Code function triggered"); // Add this line to check if the function is called
+		if (waiterCode.length < 6) {
+			console.error('Invalid waiter code: less than 6 digits');
+			showAlert('Please enter a valid waiter code (min 6 digits)', 'error');
+			return;
+		}
+		
+		// New validation for alphanumeric characters
+		const isValidCode = /^[a-zA-Z0-9]+$/.test(waiterCode);
+		if (!isValidCode) {
+			console.error('Invalid waiter code: must be alphanumeric');
+			showAlert('Please enter a valid waiter code (alphanumeric only)', 'error');
 			return;
 		}
 
-		// Check against the hardcoded waiter code
-		if (waiterCode === '123456') {
-			// Waiter code is valid
-			console.log('Waiter verification successful: Waiter code is valid');
-			
-			// Store the waiter name from the hardcoded value
-			waiterName = 'John Doe'; // Example waiter name
-			
-			// Hide the waiter code popup
-			isWaiterCodePopupVisible = false;
-			
-			// Proceed to save the order immediately after verification
-			saveQueOrder(); // Call saveQueOrder if verification is successful
-			return; // Ensure no further code runs after this point
-		} else {
-			// Waiter code is invalid
-			showAlert('Invalid waiter code. Please try again.', 'error');
+		try {
+			const response = await fetch(`http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getWaiterByCode&waiter_code=${waiterCode}`);
+			if (!response.ok) {
+				console.error('Network response was not ok:', response.statusText);
+				throw new Error('Network response was not ok');
+			}
+			const waiterData = await response.json();
+
+			if (waiterData && waiterData.firstName) { // Check if waiterData is defined and has firstName
+				// Waiter code is valid
+				console.log('Waiter verification successful:', waiterData);
+				waiterName = waiterData.firstName; // Set the waiter name from the response
+				
+				// Display first name and last name in alert
+				showAlert(`Welcome ${waiterData.firstName} ${waiterData.lastName}`, 'success');
+
+				// Hide the waiter code popup
+				isWaiterCodePopupVisible = false;
+				
+				// Proceed to save the order immediately after verification
+				saveQueOrder(); // Call saveQueOrder if verification is successful
+			} else {
+				// Waiter code is invalid
+				console.error('Invalid waiter code: No data returned');
+				showAlert('Invalid waiter code. Please try again.', 'error');
+			}
+		} catch (error) {
+			console.error('Error verifying waiter code:', error);
+				showAlert('Error verifying waiter code. Please try again.', 'error');
 		}
 	}
 
@@ -401,7 +422,7 @@
 				}
 				
 				console.log('Order saved:', data);
-				showAlert('Order queued successfully!', 'success');
+				showAlert(`Order queued successfully by Waiter ${waiterName}`, 'success');
 				
 				// After successful order, update table status
 				fetchTableStatus();
@@ -457,12 +478,18 @@
 
 	function showAlert(message: string, type: string) {
 		const alertDiv = document.createElement('div');
-		alertDiv.className = `fixed top-0 left-1/2 transform -translate-x-1/2 mt-4 p-4 ${type === 'success' ? 'bg-green-500' : 'bg-red-500'} text-white rounded shadow-lg`;
+		alertDiv.className = `fixed top-0 left-1/2 transform -translate-x-1/2 mt-4 p-4 rounded shadow-lg transition-all duration-300 ease-in-out z-50 
+			${type === 'success' ? 'bg-green-500' : 'bg-red-500'} text-white font-semibold text-lg`;
 		alertDiv.innerText = message;
 		document.body.appendChild(alertDiv);
+		
+		// Fade out effect
 		setTimeout(() => {
-			alertDiv.remove();
-		}, 3000); // Remove alert after 3 seconds
+			alertDiv.classList.add('opacity-0');
+			setTimeout(() => {
+				alertDiv.remove();
+			}, 300); // Wait for fade out to complete before removing
+		}, 3000); // Display for 3 seconds
 	}
 
 	type MenuItem = {
