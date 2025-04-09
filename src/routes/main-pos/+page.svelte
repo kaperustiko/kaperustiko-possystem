@@ -305,6 +305,7 @@
 			} else {
 				showAlert(data.message, 'success');
 				isReceiptPopupVisible = false; // Close the receipt popup
+				window.location.reload(); // Reload the window after success
 
 				// Call the delete API after successful receipt printing
 				return fetch(`http://localhost/kaperustiko-possystem/backend/modules/delete.php?action=deleteTableOccupancy&receipt_number=${receiptData.receiptNumber}`, {
@@ -328,14 +329,7 @@
 			console.error('Error:', error);
 			showAlert('Failed to save receipt.', 'error');
 		});
-	}
 
-	function openReceiptPopup() {
-		isReceiptPopupVisible = true;
-	}
-
-	function confirmVoid() {
-		// Implement the
 	}
 
 	let isCardPopupVisible = false;
@@ -354,11 +348,17 @@
 	function handleCheckOut(table: string) {
 		const orderToCheckOut = queuedOrders.find((order) => order.table_number === table);
 		if (orderToCheckOut) {
-			orderedItems = JSON.parse(orderToCheckOut.items_ordered); // Add items to orderedItems
-			totalOrderedItemsPrice = orderToCheckOut.total_amount; // Set totalOrderedItemsPrice to the total_amount of the order
-			orderNumber = orderToCheckOut.que_order_no; // Set the order number
-			console.log(totalOrderedItemsPrice);
-			closeCardPopup(); // Close the popup after checking out
+			try {
+				orderedItems = JSON.parse(orderToCheckOut.items_ordered); // Add items to orderedItems
+				totalOrderedItemsPrice = orderToCheckOut.total_amount; // Set totalOrderedItemsPrice to the total_amount of the order
+				orderNumber = orderToCheckOut.que_order_no; // Set the order number
+				console.log(totalOrderedItemsPrice);
+				closeCardPopup(); // Close the popup after checking out
+			} catch (error) {
+				console.error("Error parsing items_ordered JSON during checkout:", error);
+				console.log("Raw JSON data:", orderToCheckOut.items_ordered);
+				showAlert('Error processing order data. Please contact support.', 'error');
+			}
 		} else {
 			showAlert('No orders found for this table.', 'error'); // Show alert if no orders found
 		}
@@ -521,7 +521,15 @@
 										<p class="font-semibold">Date: <span class="font-normal">{order.date}</span></p>
 										<p class="font-semibold">Time: <span class="font-normal">{order.time}</span></p>
 										<p class="font-semibold">Items Ordered:</p>
-										{#each JSON.parse(order.items_ordered) as item}
+										{#each (() => {
+											try {
+												return JSON.parse(order.items_ordered);
+											} catch (error) {
+												console.error("Error parsing items_ordered JSON:", error);
+												console.log("Raw JSON data:", order.items_ordered);
+												return []; // Return empty array in case of parsing error
+											}
+										})() as item}
 											<div class="flex items-center justify-between border-b border-gray-200 py-2">
 												<div class="flex-1">
 													<p class="font-normal">Name: {item.order_name} {item.order_name2}</p>
@@ -708,44 +716,6 @@
 				<div class="grid grid-cols-2 gap-4">
 					<button
 						on:click={() => {
-							// Clear functionality
-							payment = '';
-							localStorage.removeItem('payment');
-							handleClear();
-							
-							currentInputStore.update((store) => {
-								return {
-									...store,
-									currentInput: 'Clr',
-									amountPaid: 0
-								};
-							});
-						}}
-						class="rounded py-3 font-bold text-gray-800 bg-gray-200 hover:bg-gray-300"
-					>
-						Clear
-					</button>
-					
-					<button
-						on:click={() => {
-							// Void functionality
-							voidOrder(0);
-							
-							currentInputStore.update((store) => {
-								return {
-									...store,
-									currentInput: 'Void',
-									amountPaid: parseFloat(amountPaid.replace('₱', '').replace(',', ''))
-								};
-							});
-						}}
-						class="rounded py-3 font-bold text-white bg-red-900 hover:bg-red-800"
-					>
-						Void
-					</button>
-					
-					<button
-						on:click={() => {
 							// Place Order functionality
 							handleButtonClick(
 								'Place Order',
@@ -769,7 +739,7 @@
 								};
 							});
 						}}
-						class="rounded py-3 font-bold text-white bg-blue-600 hover:bg-blue-700 col-span-2"
+						class="rounded py-3 font-bold text-white bg-cyan-950 hover:bg-blue-700 col-span-2"
 					>
 						Checkout Bill
 					</button>
@@ -779,28 +749,6 @@
 	</div>
 </div>
 
-{#if isCodePopupVisible}
-	<div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70">
-		<div class="w-full max-w-md rounded-lg bg-white p-8 shadow-lg">
-			<h2 class="mb-4 text-center text-2xl font-bold">Input 6-Digit Code</h2>
-			<input
-				type="text"
-				bind:value={inputCode}
-				maxlength="6"
-				class="w-full rounded border border-gray-300 p-2 text-center"
-				placeholder="Enter 6-digit code"
-			/>
-			<div class="mt-4 flex justify-between">
-				<button on:click={closeCodePopup} class="rounded-md bg-red-500 px-4 py-2 text-white"
-					>Cancel</button
-				>
-				<button on:click={confirmVoid} class="rounded-md bg-blue-500 px-4 py-2 text-white"
-					>Confirm</button
-				>
-			</div>
-		</div>
-	</div>
-{/if}
 
 {#if isReservePopupVisible}
 	<div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70">

@@ -16,8 +16,8 @@
 	let currentDay: string;
 	let isSleepActive = false; // Ensure this line exists
 
-	let debounceTimeout: NodeJS.Timeout;
-	let refreshInterval: NodeJS.Timeout;
+	let debounceTimeout: ReturnType<typeof setTimeout>;
+	let refreshInterval: ReturnType<typeof setInterval>;
 
 	let isFetching = false; // Flag to prevent multiple fetch calls
 
@@ -105,6 +105,9 @@
 		fetchOrders();
 		fetchQueuedOrders();
 		fetchCashierName(); // Automatically fetch cashier name on mount
+		updateTime(); // Initialize time immediately
+		// Set up timer to update time every minute
+		const timeInterval = setInterval(updateTime, 60000);
 		// Retrieve ordered items from localStorage
 		const storedItems = localStorage.getItem('orderedItems');
 		if (storedItems) {
@@ -115,6 +118,10 @@
 		refreshInterval = setInterval(fetchQueuedOrders, 500); // Set interval for refreshing orders
 		fetchTableStatus();
 		fetchReserveTables();
+		
+		return () => {
+			clearInterval(timeInterval); // Clean up time interval on unmount
+		};
 	});
 
 	onDestroy(() => {
@@ -151,6 +158,7 @@
 		order_addons_price3: number;
 		basePrice: number;
 		code: string;
+		special_instructions?: string; // Add special instructions field
 	};
 
 	let selectedAddons: string[] = [];
@@ -223,22 +231,40 @@
 			return;
 		}
 
-		// Store the waiter code for later use
-		waiterName = `Waiter-${waiterCode}`;
-		
-		// Hide the waiter code popup
-		isWaiterCodePopupVisible = false;
-		
-		// Fetch cashier name when place order is clicked
-		fetchCashierName(); // Call to fetch cashier name
-		// Log the codes of all ordered items
-		console.log(
-			'Ordered Item Codes:',
-			orderedItems.map((item) => item.code)
-		); // Log the codes
-		
-		// Fetch the total order count from the database
-		saveQueOrder();
+		// Send the waiter code to the server for verification
+		fetch('http://localhost/kaperustiko-possystem/backend/modules/auth.php', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/x-www-form-urlencoded',
+			},
+			body: new URLSearchParams({
+				'action': 'verifyWaiterCode',
+				'waiter_code': waiterCode
+			})
+		})
+		.then(response => response.json())
+		.then(data => {
+			if (data.status === 'success') {
+				// Waiter code is valid
+				console.log('Waiter verification successful:', data);
+				
+				// Store the waiter name from the database response
+				waiterName = data.waiterName;
+				
+				// Hide the waiter code popup
+				isWaiterCodePopupVisible = false;
+				
+				// Continue with saving the order
+				saveQueOrder();
+			} else {
+				// Waiter code is invalid
+				showAlert('Invalid waiter code. Please try again.', 'error');
+			}
+		})
+		.catch(error => {
+			console.error('Error verifying waiter code:', error);
+			showAlert('Error verifying waiter code. Please try again.', 'error');
+		});
 	}
 
 	function closeWaiterCodePopup() {
@@ -261,143 +287,166 @@
 	}
 
 	function saveQueOrder() {
-		// Prepare the receipt data
-		const receiptData = {
-			receiptNumber: parseInt(orderNumber.replace('#', '')), // Convert to integer
-			date: new Date().toLocaleDateString(),
-			time: new Date().toLocaleTimeString(),
-			cashierName: cashierName,
-			waiterName: waiterName, // Add waiter name to receipt data
-			waiterCode: waiterCode, // Add waiter code to receipt data
-			table_number: selectedTableNumber, // Use the selected table number
-			itemsOrdered: orderedItems.map((item) => ({
-				order_name: item.order_name,
-				order_name2: item.order_name2,
-				order_quantity: 'x' + item.order_quantity,
-				order_size: item.order_size,
-				order_addons: item.order_addons !== 'None' ? item.order_addons : undefined,
-				order_addons_price: item.order_addons_price || 0,
-				order_addons2: item.order_addons2 !== 'None' ? item.order_addons2 : undefined,
-				order_addons_price2: item.order_addons_price2 || 0,
-				order_addons3: item.order_addons3 !== 'None' ? item.order_addons3 : undefined,
-				order_addons_price3: item.order_addons_price3 || 0,
-				basePrice: item.basePrice // Include the base price of the item
-			})),
-			totalAmount: Math.round(
-				orderedItems.reduce(
-					(total, item) =>
-						total + parseFloat(item.order_price.toString().replace('₱', '').replace(',', '')),
-					0
-				)
-			),
-			amountPaid: payment ? Math.round(parseFloat(payment.replace('₱', '').replace(',', ''))) : 0,
-			change:
-				orderedItems.length > 0 && payment
-					? Math.round(
-							parseFloat(payment.replace('₱', '').replace(',', '')) -
-								orderedItems.reduce(
-									(total, item) =>
-										total +
-										parseFloat(item.order_price.toString().replace('₱', '').replace(',', '')),
-									0
-								)
-						)
-						: 0,
-			order_take: isDineIn ? 'Dine In' : 'Take Out', // Ensure this key matches
-			saveQueOrder: true // Add this line to indicate saving to que_orders
-		};
-
-		// Log the receipt data
-		console.log('Receipt Data:', receiptData); // Log all data when save order is clicked
-
-		// Now delete all orders before saving the receipt
-		// Call updateQuantity for each ordered item
-		orderedItems.forEach((item) => {
-			const code = item.code;
-			console.log('Sending code to PHP:', code); // Log the code being sent
-			// Prioritize deleting quantity before saving receipt
-			fetch(`http://localhost/kaperustiko-possystem/backend/modules/qty_data.php?code=${code}&order_quantity=${item.order_quantity}`, {
-				method: 'GET'
+		// Fetch the unique que order number first
+		fetch('http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getTotalQueOrders')
+			.then((response) => {
+				if (!response.ok) {
+					return response.text().then(text => {
+						throw new Error('Failed to fetch queue order number: ' + text);
+					});
+				}
+				return response.json();
 			})
-				.then((response) => response.json())
-				.then((data) => {
-					if (data.status === 'success') {
-						console.log(data.message); // Log success message
-						fetchOrders(); // Refresh orders to reflect updated quantities
-					} else {
-						console.error(data.message); // Log error message
+			.then((queueData) => {
+				// Create a unique receipt number for que orders
+				console.log('Received queue order data:', queueData);
+				
+				// Check if total_order exists in the response
+				if (!queueData || typeof queueData.total_order === 'undefined') {
+					// Use timestamp as fallback if total_order is missing
+					const timestamp = new Date().getTime().toString().slice(-6);
+					return processOrder(parseInt(timestamp));
+				}
+				
+				const queueOrderNumber = queueData.total_order.toString().padStart(2, '0');
+				return processOrder(parseInt(queueOrderNumber));
+			})
+			.catch((error) => {
+				console.error('Error fetching total que orders:', error);
+				showAlert('Failed to fetch queue order number. Using timestamp instead.', 'error');
+				
+				// Fallback to using timestamp as order number if fetch fails
+				const timestamp = new Date().getTime().toString().slice(-6);
+				processOrder(parseInt(timestamp));
+			});
+			
+		// Function to process the order with the given receipt number
+		function processOrder(receiptNum: number) {
+			// Prepare the receipt data
+			const receiptData = {
+				receiptNumber: receiptNum,
+				date: new Date().toLocaleDateString(),
+				time: new Date().toLocaleTimeString(),
+				cashierName: cashierName,
+				waiterName: waiterName, // Add waiter name
+				waiterCode: waiterCode, // Add waiter code
+				table_number: selectedTableNumber, // Use the selected table number
+				itemsOrdered: orderedItems.map((item) => ({
+					order_name: item.order_name,
+					order_name2: item.order_name2,
+					order_quantity: 'x' + item.order_quantity,
+					order_size: item.order_size,
+					order_addons: item.order_addons !== 'None' ? item.order_addons : undefined,
+					order_addons_price: item.order_addons_price || 0,
+					order_addons2: item.order_addons2 !== 'None' ? item.order_addons2 : undefined,
+					order_addons_price2: item.order_addons_price2 || 0,
+					order_addons3: item.order_addons3 !== 'None' ? item.order_addons3 : undefined,
+					order_addons_price3: item.order_addons_price3 || 0,
+					basePrice: item.basePrice, // Include the base price of the item
+					delivered: "0" // Add delivered property initialized to "0" (not delivered)
+				})),
+				totalAmount: Math.round(
+					orderedItems.reduce(
+						(total, item) =>
+							total + parseFloat(item.order_price.toString().replace('₱', '').replace(',', '')),
+						0
+					)
+				),
+				amountPaid: payment ? Math.round(parseFloat(payment.replace('₱', '').replace(',', ''))) : 0,
+				change:
+					orderedItems.length > 0 && payment
+						? Math.round(
+								parseFloat(payment.replace('₱', '').replace(',', '')) -
+									orderedItems.reduce(
+										(total, item) =>
+											total +
+											parseFloat(item.order_price.toString().replace('₱', '').replace(',', '')),
+										0
+									)
+							)
+							: 0,
+				order_take: isDineIn ? 'Dine In' : 'Take Out', // Ensure this key matches
+				saveQueOrder: true // Add this line to indicate saving to que_orders
+			};
+
+			console.log('Sending order data with waiter:', waiterName, waiterCode);
+
+			// Send data to the server
+			fetch('http://localhost/kaperustiko-possystem/backend/modules/save_que_order.php', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify(receiptData)
+			})
+				.then((response) => {
+					if (!response.ok) {
+						return response.text().then(text => {
+							throw new Error('Server response not OK: ' + text);
+						});
 					}
+					return response.json();
+				})
+				.then((data) => {
+					if (data.error) {
+						console.error('Error saving order:', data.error);
+						showAlert(data.error, 'error');
+						return;
+					}
+					
+					console.log('Order saved:', data);
+					showAlert('Order queued successfully!', 'success');
+					
+					// After successful order, update table status
+					fetchTableStatus();
+					
+					// Call updateQuantity for each ordered item
+					orderedItems.forEach((item) => {
+						const code = item.code;
+						console.log('Updating inventory for:', code);
+						fetch(`http://localhost/kaperustiko-possystem/backend/modules/qty_data.php?code=${code}&order_quantity=${item.order_quantity}`, {
+							method: 'GET'
+						})
+							.then((response) => response.json())
+							.then((data) => {
+								if (data.status === 'success') {
+									console.log('Inventory updated:', data.message);
+								} else {
+									console.error('Inventory update error:', data.message);
+								}
+							})
+							.catch((error) => {
+								console.error('Error updating quantity:', error);
+							});
+					});
+					
+					// Now delete all orders from the orders table
+					fetch('http://localhost/kaperustiko-possystem/backend/modules/delete.php?action=deleteAllOrders', {
+						method: 'DELETE'
+					})
+						.then(response => response.json())
+						.then(data => {
+							console.log('Orders cleared:', data);
+						})
+						.catch(error => {
+							console.error('Error clearing orders:', error);
+						});
+					
+					// Clear ordered items
+					orderedItems = [];
+					// Reset waiter code
+					waiterCode = '';
+					waiterName = '';
+					// Reset table number selection
+					selectedTableNumber = '';
+					// Reset payment
+					payment = '';
 				})
 				.catch((error) => {
-					console.error('Error updating quantity:', error);
+					console.error('Error:', error);
+					showAlert('Failed to queue order. Please try again.', 'error');
 				});
-		});
-
-		// Now delete all orders before saving the receipt
-		fetch(
-			'http://localhost/kaperustiko-possystem/backend/modules/delete.php?action=deleteAllOrders',
-			{
-				method: 'DELETE' // Assuming you have a DELETE endpoint
-			}
-		).then(async (deleteResponse) => {
-			if (!deleteResponse.ok) {
-				const text = await deleteResponse.text();
-				throw new Error(`Failed to delete orders: ${text}`);
-			}
-			console.log('All orders deleted successfully');
-
-			// Check if we are saving to que_orders
-			if (receiptData.saveQueOrder) {
-				// Send data to the server to save the receipt in que_orders
-				const saveResponse = await fetch(
-					'http://localhost/kaperustiko-possystem/backend/modules/save_que_order.php',
-					{
-						method: 'POST',
-						headers: {
-							'Content-Type': 'application/json'
-						},
-						body: JSON.stringify(receiptData) // Ensure this is correctly formatted
-					}
-				);
-
-				const textResponse = await saveResponse.text(); // Get the response as text
-				console.log('Response from save_receipt.php:', textResponse); // Log the response
-
-				if (!saveResponse.ok) {
-					throw new Error(`Failed to save receipt: ${textResponse}`);
-				}
-				// Show success alert
-				showAlert('Order Success', 'success'); // Call showAlert with success type
-			} else {
-				// Logic for saving to total_sales if needed
-			}
-		});
-
-		// Reset the receipt data
-		orderNumber = '#01';
-		totalCost = '₱00.00';
-		selectedCategory = 'All';
-		payment = '';
-		quantity = 1;
-		isPopupVisible = false;
-		isVariationVisible = false;
-		selectedItem = null;
-		selectedItemDetails = null;
-		orderedItems = [];
-		selectedSize = 'Regular';
-		selectedAddons = [];
-		waiterCode = ''; // Reset waiter code
-		waiterName = ''; // Reset waiter name
-		quantity = 1; // Reset quantity to 1
-
-		// Reset all numbers in local storage, except for staff_token
-		const staffToken = localStorage.getItem('staff_token'); // Preserve staff_token
-		localStorage.clear(); // Clear all numbers in local storage
-		if (staffToken) {
-			localStorage.setItem('staff_token', staffToken); // Restore staff_token
 		}
-
-		window.location.reload(); // Removed the refresh call
 	}
 
 	function showAlert(message: string, type: string) {
@@ -450,23 +499,17 @@
 			return total + addonPrice; // Sum up the prices
 		}, 0); // Initialize total to 0
 
-		const newItem = {
-			title: item.title1,
-			price: formatPrice(quantity * (basePrice + totalAddonsPrice)), // Correctly calculate total price
-			originalPrice: formatPrice(basePrice),
-			size: selectedSize,
-			quantity: quantity,
-			addons: selectedAddons,
-			basePrice: basePrice, // Add basePrice to the newItem
-			addonsPrices: selectedAddons
-				.map((addon) => {
-					const price = calculateAddonsPrice([addon]); // Get individual addon price
-					return `${addon} - ₱${price}`; // Format as "Addon - Price"
-				})
-				.join(', '), // Join the prices into a single string
-			code: item.code
-		};
-		orderedItems = [...orderedItems];
+		// Check if this item already exists in the cart with the same specifications
+		const existingItemIndex = orderedItems.findIndex(existingItem => 
+			existingItem.code === item.code && 
+			existingItem.order_size === selectedSize && 
+			existingItem.order_addons === (selectedAddons.length > 0 ? selectedAddons[0] : 'None') &&
+			existingItem.order_addons2 === (selectedAddons.length > 1 ? selectedAddons[1] : 'None') &&
+			existingItem.order_addons3 === (selectedAddons.length > 2 ? selectedAddons[2] : 'None') &&
+			existingItem.special_instructions === specialInstructions // Also check if special instructions match
+		);
+
+		const totalOrderPrice = basePrice * quantity + totalAddonsPrice; // Calculate total price
 
 		// Prepare data to send to the server
 		type OrderData = {
@@ -476,21 +519,19 @@
 			order_size: string;
 			order_price: number;
 			order_image: string;
-			order_addons?: string; // Add optional properties for addons
+			order_addons?: string;
 			order_addons_price?: number;
 			order_addons2?: string;
 			order_addons_price2?: number;
 			order_addons3?: string;
 			order_addons_price3?: number;
-			basePrice: number; // Add basePrice to the OrderData type
+			basePrice: number;
 			code: string;
 			table_number: string;
+			special_instructions: string; // Add special instructions field
 		};
 
-		const currentAddonsPrice = calculateAddonsPrice(selectedAddons); // Renamed variable
-		const totalOrderPrice = basePrice * quantity + totalAddonsPrice; // Calculate total price
-
-		// Update the orderData to include the correct order_price
+		// Create the order data
 		const orderData: OrderData = {
 			order_name: item.title1,
 			order_name2: item.title2,
@@ -498,7 +539,7 @@
 			order_size: selectedSize,
 			order_price: totalOrderPrice, // Calculate total price as a number
 			order_image: item.image,
-			basePrice: basePrice, // Change this line to reflect the original price
+			basePrice: basePrice, // Original price without quantity or addons
 			// Add-ons handling
 			order_addons: selectedAddons.length > 0 ? selectedAddons[0] : 'None',
 			order_addons_price:
@@ -516,12 +557,55 @@
 					? parseFloat(calculateAddonsPrice([selectedAddons[2]]).replace('₱', '').replace(',', ''))
 					: 0,
 			code: item.code,
-			table_number: selectedTableNumber // Add table number to order data
+			table_number: selectedTableNumber,
+			special_instructions: specialInstructions // Add special instructions field
 		};
 
-		console.log('Order Data:', orderData); // Log the order data
-
-		// Save the order to the database
+		// If the item already exists, update the quantity and price instead of adding a new item
+		if (existingItemIndex !== -1) {
+			// First, remove the existing item from the database
+			const existingItem = orderedItems[existingItemIndex];
+			
+			fetch(
+				`http://localhost/kaperustiko-possystem/backend/modules/delete.php?action=voidOrder&order_name=${encodeURIComponent(existingItem.order_name)}&order_size=${encodeURIComponent(existingItem.order_size)}&index=${existingItemIndex}`,
+				{
+					method: 'DELETE'
+				}
+			).then((response) => response.json())
+			.then(() => {
+				// Update the quantity and price - ensure numeric addition with parseInt
+				const currentQuantity = Number(existingItem.order_quantity);
+				const qtyToAdd = Number(quantity);
+				const newQuantity = currentQuantity + qtyToAdd;
+				
+				// Update the orderData with the new quantity and recalculated price
+				orderData.order_quantity = newQuantity;
+				orderData.order_price = (basePrice * newQuantity) + (totalAddonsPrice * newQuantity / qtyToAdd);
+				
+				// Update the local state
+				const updatedItems = [...orderedItems];
+				updatedItems[existingItemIndex] = {
+					...existingItem,
+					order_quantity: newQuantity,
+					order_price: orderData.order_price
+				};
+				
+				// Save the order with updated quantity to the database
+				saveOrderToDatabase(orderData, updatedItems);
+			})
+			.catch((error) => {
+				console.error('Error updating order quantity:', error);
+				// If deletion fails, add as a new item as fallback
+				saveOrderToDatabase(orderData, [...orderedItems]);
+			});
+		} else {
+			// Item doesn't exist, add as new
+			saveOrderToDatabase(orderData, [...orderedItems]);
+		}
+	}
+	
+	// Helper function to save order to database
+	function saveOrderToDatabase(orderData: any, updatedItems: any[]) {
 		fetch('http://localhost/kaperustiko-possystem/backend/modules/insert.php?action=save_order', {
 			method: 'POST',
 			headers: {
@@ -529,6 +613,81 @@
 			},
 			body: JSON.stringify(orderData)
 		})
+		.then((response) => {
+			if (!response.ok) {
+				return response.text().then((text) => {
+					throw new Error(text);
+				});
+			}
+			return response.json();
+		})
+		.then((data) => {
+			console.log(data.message);
+			orderedItems = updatedItems;
+			// Save the order to localStorage
+			localStorage.setItem('orderedItems', JSON.stringify(orderedItems));
+		})
+		.catch((error) => {
+			console.error('Error saving order:', error);
+		})
+		.finally(() => {
+			fetchOrders();
+			selectedItem = null;
+			selectedSize = 'Regular';
+			selectedAddons = [];
+			specialInstructions = ''; // Reset special instructions
+			quantity = 1; // Reset quantity to 1
+			closePopup();
+		});
+	}
+
+	// Function to update quantity of an existing item
+	function updateItemQuantity(index: number, newQuantity: number) {
+		// Ensure newQuantity is a proper number
+		newQuantity = parseInt(String(newQuantity), 10);
+		
+		if (newQuantity < 1) {
+			// If quantity is less than 1, void the item
+			voidOrder(index);
+			return;
+		}
+		
+		const item = orderedItems[index];
+		
+		// First, remove the existing item from the database
+		fetch(
+			`http://localhost/kaperustiko-possystem/backend/modules/delete.php?action=voidOrder&order_name=${encodeURIComponent(item.order_name)}&order_size=${encodeURIComponent(item.order_size)}&index=${index}`,
+			{
+				method: 'DELETE'
+			}
+		).then((response) => response.json())
+		.then(() => {
+			// Calculate the unit price (price per item without quantity)
+			const unitPrice = Number(item.basePrice);
+			const addonsPrice = Number(item.order_addons_price || 0) + Number(item.order_addons_price2 || 0) + Number(item.order_addons_price3 || 0);
+			
+			// Create updated order data with preserved special instructions
+			const updatedOrderData = {
+				...item,
+				order_quantity: newQuantity,
+				order_price: (unitPrice * newQuantity) + (addonsPrice * newQuantity),
+				// Preserve special instructions if they exist
+				special_instructions: item.special_instructions || ''
+			};
+			
+			// Update local state first to provide immediate feedback
+			const updatedItems = [...orderedItems];
+			updatedItems[index] = updatedOrderData;
+			orderedItems = updatedItems;
+			
+			// Save the updated order to the database
+			fetch('http://localhost/kaperustiko-possystem/backend/modules/insert.php?action=save_order', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify(updatedOrderData)
+			})
 			.then((response) => {
 				if (!response.ok) {
 					return response.text().then((text) => {
@@ -538,22 +697,17 @@
 				return response.json();
 			})
 			.then((data) => {
-				console.log(data.message);
+				console.log('Order updated:', data.message);
+				localStorage.setItem('orderedItems', JSON.stringify(orderedItems));
+				fetchOrders();
 			})
 			.catch((error) => {
-				console.error('Error saving order:', error);
+				console.error('Error updating order:', error);
 			});
-
-		fetchOrders();
-
-		selectedItem = null;
-		selectedSize = 'Regular';
-		selectedAddons = [];
-		quantity = 1; // Reset quantity to 1
-		closePopup();
-
-		// Save the order to localStorage
-		localStorage.setItem('orderedItems', JSON.stringify(orderedItems)); // Store orderedItems in localStorage
+		})
+		.catch((error) => {
+			console.error('Error updating order quantity:', error);
+		});
 	}
 
 	function calculateAddonsPrice(addons: string[]): string {
@@ -610,9 +764,9 @@
 		orderedItems.splice(index, 1); // Remove from local array
 		localStorage.setItem('orderedItems', JSON.stringify(orderedItems)); // Update localStorage after voiding
 
-		// Send request to backend to delete the order
+		// Send request to backend to delete the order - include both code and size to identify the specific item
 		fetch(
-			`http://localhost/kaperustiko-possystem/backend/modules/delete.php?action=voidOrder&order_name=${encodeURIComponent(orderToVoid.order_name)}`,
+			`http://localhost/kaperustiko-possystem/backend/modules/delete.php?action=voidOrder&order_name=${encodeURIComponent(orderToVoid.order_name)}&order_size=${encodeURIComponent(orderToVoid.order_size)}&index=${index}`,
 			{
 				method: 'DELETE'
 			}
@@ -645,12 +799,35 @@
 		total_amount: number;
 		amount_paid: number;
 		order_status: string;
-		waiterName?: string; // Add waiter name (optional)
-		waiterCode?: string; // Add waiter code (optional)
+		waiter_name?: string; // Add waiter name field
+		waiter_code?: string; // Add waiter code field
+	};
+
+	// Define a type for table order items
+	type TableOrderItem = {
+		receipt_number: string;
+		order_name: string;
+		order_size: string;
+		order_quantity: number;
+		order_status: string;
+		waiter_name?: string;
+		order_addons: string;
+		order_addons_price: number;
+		order_addons2: string;
+		order_addons_price2: number;
+		order_addons3: string;
+		order_addons_price3: number;
+		item_total_price: number;
+		delivered: boolean;
 	};
 
 	// Use the defined type for queuedOrders
 	let queuedOrders: QueuedOrder[] = [];
+	
+	// Add state for table details modal
+	let isTableDetailsModalVisible = false;
+	let selectedTableDetails: { tableNumber: string; orders: QueuedOrder[] } = { tableNumber: '', orders: [] };
+	let selectedTableItems: TableOrderItem[] = [];
 
 	async function fetchQueuedOrders() {
 		const response = await fetch('http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getQueOrders');
@@ -659,6 +836,328 @@
 		} else {
 			console.error('Failed to fetch queued orders', response.statusText); // Improved error logging
 		}
+	}
+
+	// Function to open table details modal
+	function openTableDetails(tableNumber: string) {
+		selectedTableDetails.tableNumber = tableNumber;
+		selectedTableDetails.orders = queuedOrders.filter(order => order.table_number === tableNumber);
+		
+		// Fetch detailed items for this table
+		fetchTableOrderDetails(tableNumber);
+	}
+	
+	// Function to fetch detailed order items for a table
+	async function fetchTableOrderDetails(tableNumber: string) {
+		try {
+			// Show loading indicator
+			showAlert('Loading order details...', 'info');
+			
+			console.log(`Fetching order details for table ${tableNumber}`);
+			
+			// Get queued orders for the table to check expectations
+			const expectedOrders = queuedOrders.filter(order => order.table_number === tableNumber);
+			console.log(`Table ${tableNumber} should have ${expectedOrders.length} orders:`, 
+				expectedOrders.map(o => o.receipt_number));
+			
+			// Fetch order details
+			const response = await fetch(`http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getTableOrderDetails&table_number=${tableNumber}`);
+			if (!response.ok) {
+				console.error(`HTTP error ${response.status}: ${response.statusText}`);
+				showAlert(`Failed to fetch order details (${response.status})`, 'error');
+				return;
+			}
+			
+			let data;
+			try {
+				const text = await response.text();
+				console.log("Raw response:", text);
+				data = JSON.parse(text);
+			} catch (error) {
+				console.error("Error parsing response:", error);
+				showAlert("Error parsing server response", 'error');
+				return;
+			}
+			
+			console.log('Table order details:', data);
+			
+			if (data && data.error) {
+				console.error('Error in response:', data.error);
+				showAlert('Error: ' + data.error, 'error');
+				return;
+			}
+			
+			// Process the fetched data
+			if (Array.isArray(data) && data.length > 0) {
+				// Process each item to ensure the delivered property is correctly formatted
+				selectedTableItems = data.map((item: any) => {
+					// Convert delivered property to a consistent format
+					let isDelivered = false;
+					if (typeof item.delivered === 'string') {
+						isDelivered = item.delivered === "1";
+					} else if (typeof item.delivered === 'boolean') {
+						isDelivered = item.delivered;
+					} else if (item.delivered === 1 || item.delivered === 0) {
+						isDelivered = item.delivered === 1;
+					}
+					
+					return {
+						...item,
+						delivered: isDelivered
+					};
+				});
+				
+				// Check if we have all expected orders
+				const fetchedReceipts = [...new Set(selectedTableItems.map(item => item.receipt_number))];
+				console.log(`Found ${fetchedReceipts.length} orders with ${selectedTableItems.length} items`);
+				
+				// Check if we're missing any orders
+				const missingReceipts = expectedOrders.filter(order => 
+					!fetchedReceipts.includes(order.receipt_number)).map(order => order.receipt_number);
+				
+				if (missingReceipts.length > 0) {
+					console.log(`Missing ${missingReceipts.length} receipts: ${missingReceipts.join(', ')}`);
+					
+					// Try to fetch each missing receipt individually
+					for (const receiptNumber of missingReceipts) {
+						try {
+							const receiptResponse = await fetch(
+								`http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getOrderItemsByReceipt&receipt_number=${receiptNumber}`
+							);
+							
+							if (receiptResponse.ok) {
+								const receiptData = await receiptResponse.json();
+								console.log(`Fetched additional data for receipt ${receiptNumber}:`, receiptData);
+								
+								if (Array.isArray(receiptData) && receiptData.length > 0) {
+									// Process these items and add them to selectedTableItems
+									const formattedItems = receiptData.map((item: any) => {
+										let isDelivered = false;
+										if (typeof item.delivered === 'string') {
+											isDelivered = item.delivered === "1";
+										} else if (typeof item.delivered === 'boolean') {
+											isDelivered = item.delivered;
+										} else if (item.delivered === 1 || item.delivered === 0) {
+											isDelivered = item.delivered === 1;
+										}
+										
+										return {
+											...item,
+											delivered: isDelivered,
+											table_number: tableNumber // Ensure table number is set
+										};
+									});
+									
+									// Add the newly fetched items
+									selectedTableItems = [...selectedTableItems, ...formattedItems];
+								}
+							} else {
+								console.error(`Failed to fetch receipt ${receiptNumber}`);
+							}
+						} catch (error) {
+							console.error(`Error fetching receipt ${receiptNumber}:`, error);
+						}
+					}
+				}
+				
+				// Final count of orders after all fetches
+				const finalReceipts = [...new Set(selectedTableItems.map(item => item.receipt_number))];
+				console.log(`Final count: ${finalReceipts.length} orders with ${selectedTableItems.length} items`);
+				
+				if (selectedTableItems.length > 0) {
+					showAlert(`Loaded ${selectedTableItems.length} items from ${finalReceipts.length} orders`, 'success');
+				} else {
+					showAlert('No items found for this table', 'warning');
+				}
+			} else {
+				console.log('No items returned from API for table', tableNumber);
+				showAlert('No order details found for this table', 'info');
+			}
+			
+			// Show the modal regardless, even if empty (will show "No items" message)
+			isTableDetailsModalVisible = true;
+			
+		} catch (error) {
+			console.error('Error fetching table order details:', error);
+			showAlert('Error loading order details', 'error');
+		}
+	}
+	
+	// Function to toggle delivery status of an item
+	async function toggleDeliveryStatus(item: TableOrderItem) {
+		const originalDelivered = item.delivered;
+		// Update locally for immediate UI feedback
+		item.delivered = !originalDelivered;
+		
+		try {
+			// Log the item details for debugging
+			console.log('Item details being updated:', item);
+			
+			// Prepare the payload with consistent format
+			const payload = {
+				receipt_number: item.receipt_number,
+				order_name: item.order_name,
+				order_size: item.order_size,
+				delivered: item.delivered ? "1" : "0"
+			};
+			
+			console.log('Sending delivery status update:', payload);
+			
+			// Log more information for debugging
+			console.log(`Updating item: ${item.order_name} (${item.order_size}) in receipt ${item.receipt_number}`);
+			
+			const response = await fetch(`http://localhost/kaperustiko-possystem/backend/modules/update.php?action=updateDeliveryStatus`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify(payload)
+			});
+			
+			if (!response.ok) {
+				throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+			}
+			
+			const responseText = await response.text();
+			console.log('Response text:', responseText);
+			
+			let result;
+			try {
+				result = JSON.parse(responseText);
+			} catch (e) {
+				console.error('Failed to parse JSON response:', e);
+				showAlert('Error parsing server response', 'error');
+				item.delivered = originalDelivered; // Revert to original state
+				return;
+			}
+			
+			if (result.success) {
+				// If the status was changed (either to done or back to pending)
+				if (result.status_changed) {
+					// Update all items with the same receipt number to show the new status
+					selectedTableItems.forEach(i => {
+						if (i.receipt_number === item.receipt_number) {
+							i.order_status = result.new_status;
+						}
+					});
+					
+					// Update the order in the queuedOrders list
+					const orderToUpdate = queuedOrders.find(order => order.receipt_number === item.receipt_number);
+					if (orderToUpdate) {
+						orderToUpdate.order_status = result.new_status;
+					}
+					
+					// Update UI
+					selectedTableItems = [...selectedTableItems];
+					queuedOrders = [...queuedOrders];
+					
+					// Show appropriate message based on new status
+					if (result.new_status === 'done') {
+						showAlert("All items delivered! Order marked as DONE", 'success');
+					} else {
+						showAlert("Order status changed to PENDING as not all items are delivered", 'success');
+					}
+				} else {
+					// Status didn't change but the item was updated
+					// Count remaining undelivered items
+					const undeliveredItems = selectedTableItems.filter(i => 
+						i.receipt_number === item.receipt_number && 
+						(typeof i.delivered === 'string' ? i.delivered === "0" || i.delivered === "" : !i.delivered)
+					).length;
+					
+					let message = '';
+					if (typeof item.delivered === 'string' ? item.delivered === "1" : !!item.delivered) {
+						message = `Item marked as delivered. ${undeliveredItems} item(s) remaining.`;
+					} else {
+						message = "Item marked as not delivered.";
+					}
+					
+					showAlert(message, 'success');
+				}
+				
+				// Refresh table data to ensure we have the latest
+				await fetchTableOrderDetails(selectedTableDetails.tableNumber);
+				await fetchQueuedOrders();
+			} else {
+				console.error('Server returned error:', result.message);
+				
+				// Handle item not found error by retrying with name alternatives
+				if (result.message && result.message.includes('Item not found in order')) {
+					console.log('Available items:', result.available_items);
+					
+					// Try to find a matching item from the available items
+					if (result.available_items && result.available_items.length > 0) {
+						const availableItem = result.available_items[0];
+						const match = availableItem.match(/^([^-]+) - ([^ ]+)/);
+						
+						if (match) {
+							// Extract the name and size from the first available item
+							const exactName = match[1].trim();
+							const exactSize = match[2].trim();
+							
+							console.log(`Retrying with exact match: ${exactName} - ${exactSize}`);
+							
+							// Retry with exact name
+							const retryPayload = {
+								receipt_number: item.receipt_number,
+								order_name: exactName,
+								order_size: exactSize,
+								delivered: item.delivered ? "1" : "0"
+							};
+							
+							const retryResponse = await fetch(`http://localhost/kaperustiko-possystem/backend/modules/update.php?action=updateDeliveryStatus`, {
+								method: 'POST',
+								headers: {
+									'Content-Type': 'application/json'
+								},
+								body: JSON.stringify(retryPayload)
+							});
+							
+							if (retryResponse.ok) {
+								const retryResult = await retryResponse.json();
+								if (retryResult.success) {
+									showAlert(`Item "${exactName}" marked as delivered`, 'success');
+									
+									// Refresh data
+									await fetchTableOrderDetails(selectedTableDetails.tableNumber);
+									await fetchQueuedOrders();
+									return;
+								}
+							}
+						}
+					}
+					
+					// Create a detailed error message
+					let errorMessage = 'Item not found in order. ';
+					if (result.available_items.length > 0) {
+						errorMessage += `Available items: ${result.available_items.join(', ')}`;
+					}
+					
+					showAlert(errorMessage, 'error');
+					
+					// Refresh table data - there might be a mismatch
+					await fetchTableOrderDetails(selectedTableDetails.tableNumber);
+				} else {
+					showAlert(result.message || 'Failed to update delivery status', 'error');
+				}
+				
+				// Revert the change if update failed
+				item.delivered = originalDelivered;
+			}
+		} catch (error) {
+			console.error('Error updating delivery status:', error);
+			item.delivered = originalDelivered; // Revert to original state
+			showAlert('Failed to update delivery status', 'error');
+			
+			// Try to refresh data
+			await fetchTableOrderDetails(selectedTableDetails.tableNumber);
+		}
+	}
+	
+	// Function to close table details modal
+	function closeTableDetailsModal() {
+		isTableDetailsModalVisible = false;
+		selectedTableItems = [];
 	}
 
 	async function fetchTableStatus() {
@@ -680,13 +1179,17 @@
 			console.error('Failed to fetch reserved tables', response.statusText);
 		}
 	}
+
+	// First, add a new variable to store special instructions
+	let specialInstructions = '';
 </script>
 
 <div class="flex h-screen">
 	<div class="flex flex-grow overflow-hidden bg-gray-100">
-		<div class="flex flex-col w-auto overflow-auto p-4">
-			<div class="mb-4 flex flex-wrap space-x-4">
-				{#each ['All', 'Beverages', 'Food', 'Dessert', 'Coffee', 'Tea', 'Soda', 'Pasta', 'Burger', 'Ulam', 'Rice'] as category}
+		<div class="flex flex-col w-full overflow-auto p-4">
+			<!-- Category buttons navigation -->
+			<div class="sticky top-0 z-10 bg-white shadow-md py-3 px-2 mb-4 flex flex-wrap space-x-4 border-b border-gray-200">
+				{#each ['All', 'Beverages', 'Food', 'Dessert', 'Coffee', 'Tea', 'Soda', 'Sandwich', 'Pasta', 'Burger', 'Ulam', 'Rice'] as category}
 					<button
 						class="rounded-md px-4 py-2 font-bold text-black transition duration-200"
 						class:bg-cyan-950={selectedCategory === category}
@@ -700,6 +1203,7 @@
 				{/each}
 			</div>
 
+			<!-- Category display header -->
 			<div class="mb-4 flex items-center justify-between font-bold text-black">
 				{#if selectedCategory === 'All'}
 					<p>Display All Menu</p>
@@ -715,17 +1219,22 @@
 					<p>Display Tea Menu</p>
 				{:else if selectedCategory === 'Soda'}
 					<p>Display Soda Menu</p>
+				{:else if selectedCategory === 'Sandwich'}
+					<p>Display Sandwich Menu</p>
 				{:else if selectedCategory === 'Ulam'}
 					<p>Display Ulam Menu</p>
 				{:else if selectedCategory === 'Rice'}
 					<p>Display Rice Menu</p>
-				{:else if selectedCategory === 'Desserts'}
-					<p>Display Desserts Menu</p>
+				{:else if selectedCategory === 'Pasta'}
+					<p>Display Pasta Menu</p>
+				{:else if selectedCategory === 'Burger'}
+					<p>Display Burger Menu</p>
 				{/if}
-				<p class="mr-4">{currentDay} - {currentTime}</p>
+				<p class="mr-4">{currentDay || ''} {currentTime ? '- ' + currentTime : ''}</p>
 			</div>
 
-			<div class="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3">
+			<!-- Grid of menu items -->
+			<div class="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 auto-rows-auto">
 				{#each cardData.filter((item) => selectedCategory === 'All' || item.label === selectedCategory || item.label2 === selectedCategory) as { code, title1, title2, price1, price2, price3, image, menu_no, label, label2, qty }}
 					<Card
 						{code}
@@ -746,7 +1255,8 @@
 		</div>
 	</div>
 
-	<div class="flex flex-col w-[950px]">
+	<!-- Right sidebar with fixed width -->
+	<div class="flex-none w-[700px]">
         
 		<!-- Orders Section -->
 		<div class="fixed right-[350px] top-0 flex h-full w-[350px] flex-col items-center bg-gray-100 p-4 shadow-lg">
@@ -756,12 +1266,20 @@
 			<!-- Added Table Number Dropdown -->
 			<div class="mb-4 w-full">
 				<label for="tableNumber" class="block text-gray-700">Table Number:</label>
-				<select bind:value={selectedTableNumber} class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200">
+				<select 
+					bind:value={selectedTableNumber} 
+					class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200"
+				>
 					<option value="">Select Table Number</option>
-					{#each Array(21) as _, index}
-						<option value={index + 1} 
-							class={queuedOrders.some(order => order.table_number === (index + 1).toString()) ? 'bg-red-500 text-white' : reservedTables.includes((index + 1).toString()) ? 'bg-orange-950 text-white'  : ''}>
-							Table {index + 1}
+					{#each Array.from({length: 21}, (_, i) => (i + 1).toString()) as tableNum}
+						{@const isOccupied = tableStatus[tableNum] === true}
+						{@const isReserved = reservedTables.includes(tableNum)}
+						<option 
+							value={tableNum} 
+							disabled={isReserved} 
+							class={isOccupied ? 'bg-yellow-300 text-black' : isReserved ? 'bg-red-500 text-white' : ''}
+						>
+							Table {tableNum} {isOccupied ? '(has orders)' : isReserved ? '(reserved)' : ''}
 						</option>
 					{/each}
 				</select>
@@ -774,7 +1292,7 @@
 								<p class="text-gray-600">Code: {item.code}</p>
 							</div>
 							<div class="flex items-center justify-between">
-								<p class="font-semibold text-gray-800">{item.order_name} x {item.order_quantity}</p>
+								<p class="font-semibold text-gray-800">{item.order_name}</p>
 								<p class="text-right font-semibold text-gray-800">₱{item.order_price}.00</p>
 							</div>
 							<div class="flex items-center justify-between">
@@ -802,9 +1320,44 @@
 									{/if}
 								</ul>
 							{/if}
-							<button on:click={() => voidOrder(index)} class="mt-2 text-center text-red-500"
-								>Void</button
-							>
+							
+							<!-- Special Instructions display -->
+							{#if item.special_instructions && item.special_instructions !== ''}
+								<div class="mt-2 bg-yellow-50 p-2 rounded-md">
+									<p class="text-xs font-medium text-yellow-800">Special instructions:</p>
+									<p class="text-sm text-gray-700">{item.special_instructions}</p>
+								</div>
+							{/if}
+							
+							<!-- Quantity controls -->
+							<div class="mt-2 flex items-center justify-between">
+								<div class="flex items-center">
+									<button 
+										on:click={() => {
+											const currentQty = Number(item.order_quantity);
+											updateItemQuantity(index, currentQty - 1);
+										}}
+										class="h-8 w-8 rounded-l bg-gray-200 font-bold text-gray-700 hover:bg-gray-300"
+									>
+										-
+									</button>
+									<span class="flex h-8 w-12 items-center justify-center bg-gray-100 text-center">
+										{item.order_quantity}
+									</span>
+									<button 
+										on:click={() => {
+											const currentQty = Number(item.order_quantity);
+											updateItemQuantity(index, currentQty + 1);
+										}}
+										class="h-8 w-8 rounded-r bg-gray-200 font-bold text-gray-700 hover:bg-gray-300"
+									>
+										+
+									</button>
+								</div>
+								<button on:click={() => voidOrder(index)} class="rounded-md bg-red-100 px-3 py-1 text-center text-red-600 hover:bg-red-200">
+									Void
+								</button>
+							</div>
 						</div>
 					{/each}
 				{:else}
@@ -890,68 +1443,90 @@
                 </div>
 			</div>
 		</div>
-		</div>
 
 	<!-- Que Order Section -->
-			<div class="fixed right-0 top-0 flex h-full w-[350px] flex-col items-center bg-gray-100 p-4 shadow-lg">
-				<div class="mb-4 w-full rounded-md bg-green-800 py-2 text-center text-white">
-					<p class="text-sm font-bold">Que Orders</p>
-				</div>
-				<div class="mb-4 max-h-full w-full flex-grow space-y-2 overflow-y-auto">
-					{#if queuedOrders.length > 0}
-						{#each queuedOrders as order}
-						<div class="flex flex-col rounded-lg bg-white p-4 shadow-md">
-							<div class="flex items-center justify-between">
-								<p class="text-gray-600">Table No:</p>
-								<span>{order.table_number}</span>
-							</div>
-							<div class="flex items-center justify-between">
-								<p class="text-gray-600">Order No: </p>
-								<span>{order.receipt_number}</span>
-							</div>
-							<div class="flex items-center justify-between">
-								<p class="font-semibold text-gray-800">Order Total Price:</p>
-								<span>₱{order.total_amount}</span>
-							</div>
-							<div class="flex items-center justify-between mb-2">
-								<p class="text-gray-600">Amount Paid:</p>
-								<span class={`font-semibold ${order.amount_paid == 0 ? 'bg-red-500 text-white rounded-md px-2 py-1 shadow-sm' : order.amount_paid > 0 ? 'bg-green-500 text-white rounded-md px-2 py-1 shadow-sm' : 'text-gray-800'}`}>
-									{order.amount_paid == 0 ? 'not paid' : `paid`}
-								</span>
-							</div>
-							<div class="flex items-center justify-between">
-								<p class="text-gray-600">Status:</p>
-								<span class={`font-semibold px-2 py-1 rounded-md 
-									${order.order_status === 'pending' ? 'bg-red-500 text-white' : ''} 
-									${order.order_status === 'processing' ? 'bg-yellow-500 text-white' : ''} 
-									${order.order_status === 'done' ? 'bg-green-500 text-white' : ''}`}>
-									{order.order_status}
-								</span>
-							</div>
-							{#if order.waiterName}
-							<div class="flex items-center justify-between mt-2">
-								<p class="text-gray-600">Served by:</p>
-								<span class="font-semibold text-blue-600">{order.waiterName}</span>
-							</div>
-							{/if}
-						</div>
-						{/each}
-					{:else}
-						<p class="text-center text-gray-600 text-lg">No queued orders available.</p>
-					{/if}
-				</div>
-				<button on:click={() => isSleepActive = true} class="mt-2 w-full rounded-md bg-blue-500 px-4 py-2 text-white">
-					Sleep
-				</button>
+		<div class="fixed right-0 top-0 flex h-full w-[350px] flex-col items-center bg-gray-100 p-4 shadow-lg">
+			<div class="mb-4 w-full rounded-md bg-green-800 py-2 text-center text-white">
+				<p class="text-sm font-bold">Que Orders</p>
 			</div>
+			<div class="mb-4 max-h-full w-full flex-grow space-y-2 overflow-y-auto">
+				{#if queuedOrders.length > 0}
+					<!-- Group orders by table -->
+					{#each [...new Set(queuedOrders.map(order => order.table_number))].sort((a, b) => Number(a) - Number(b)) as tableNum}
+						<div class="rounded-lg bg-blue-100 p-2 mb-3">
+							<div class="flex items-center justify-between bg-blue-500 text-white p-2 rounded-t-lg">
+								<h3 class="font-bold">Table {tableNum}</h3>
+								<span class="bg-white text-blue-500 px-2 py-1 rounded-full text-xs font-bold">
+									{queuedOrders.filter(order => order.table_number === tableNum).length} orders
+								</span>
+							</div>
+							
+							<!-- Make the whole table section clickable -->
+							<!-- svelte-ignore a11y-click-events-have-key-events -->
+							<div 
+								class="p-2 bg-white rounded-b-lg cursor-pointer hover:bg-blue-50 transition-colors"
+								on:click={() => openTableDetails(tableNum)}
+							>
+								<p class="text-center text-blue-600 font-semibold mb-1">Click to view orders</p>
+								
+								{#each queuedOrders.filter(order => order.table_number === tableNum) as order}
+								<div class="flex flex-col rounded-lg bg-white p-4 shadow-md mt-2">
+									<div class="flex items-center justify-between">
+										<p class="text-gray-600">Order No: </p>
+										<span>{order.receipt_number}</span>
+									</div>
+									{#if order.waiter_name}
+									<div class="flex items-center justify-between">
+										<p class="text-gray-600">Waiter:</p>
+										<span>{order.waiter_name}</span>
+									</div>
+									{/if}
+									<div class="flex items-center justify-between">
+										<p class="font-semibold text-gray-800">Order Total Price:</p>
+										<span>₱{order.total_amount}</span>
+									</div>
+									<div class="flex items-center justify-between mb-2">
+										<p class="text-gray-600">Amount Paid:</p>
+										<span class={`font-semibold ${order.amount_paid == 0 ? 'bg-red-500 text-white rounded-md px-2 py-1 shadow-sm' : order.amount_paid > 0 ? 'bg-green-500 text-white rounded-md px-2 py-1 shadow-sm' : 'text-gray-800'}`}>
+											{order.amount_paid == 0 ? 'not paid' : `paid`}
+										</span>
+									</div>
+									<div 
+										class="flex items-center justify-between"
+										role="button" 
+										tabindex="0"
+										on:click={() => openTableDetails(tableNum)}
+										on:keydown={(e) => e.key === 'Enter' && openTableDetails(tableNum)}
+									>
+										<p class="text-gray-600">Status:</p>
+										<span class={`font-semibold px-2 py-1 rounded-md 
+											${order.order_status === 'pending' ? 'bg-red-500 text-white' : ''} 
+											${order.order_status === 'processing' ? 'bg-yellow-500 text-white' : ''} 
+											${order.order_status === 'done' ? 'bg-green-500 text-white' : ''}`}>
+											{order.order_status}
+										</span>
+									</div>
+								</div>
+								{/each}
+							</div>
+						</div>
+					{/each}
+				{:else}
+					<p class="text-center text-gray-600 text-lg">No queued orders available.</p>
+				{/if}
+			</div>
+			<button on:click={() => isSleepActive = true} class="mt-2 w-full rounded-md bg-blue-500 px-4 py-2 text-white">
+				Sleep
+			</button>
 		</div>
+	</div>
+</div>
 
 {#if isVariationVisible}
-	<div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70">
-		<div class="w-full max-w-md rounded-lg bg-white p-8 shadow-lg">
+	<div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-90 z-50">
+		<div class="relative w-full max-w-md rounded-lg bg-white p-8 shadow-xl">
 			<h2 class="mb-6 text-center text-2xl font-bold">
-				Add {selectedItem?.title1}
-				{selectedItem?.title2}
+				Add {selectedItem?.title1} {selectedItem?.title2}
 			</h2>
 			<p class="mb-6 text-center text-lg">
 				Price: ₱{displayedPrice} (Add-ons: ₱{calculateAddonsPrice(selectedAddons)})
@@ -960,7 +1535,7 @@
 				<img
 					src={`/foods/${selectedItem.image}`}
 					alt={selectedItem.title1}
-					class="mb-4 h-[400px] w-full rounded"
+					class="mb-4 h-[400px] w-full rounded object-cover"
 				/>
 			{/if}
 
@@ -1050,6 +1625,16 @@
 				{/if}
 			</div>
 
+			<!-- Special Instructions field -->
+			<label for="special-instructions" class="mb-2 block text-sm font-medium">Special Instructions:</label>
+			<textarea
+				id="special-instructions"
+				bind:value={specialInstructions}
+				class="mb-6 w-full rounded-md border border-gray-300 p-3 text-sm"
+				placeholder="E.g., Less ice, no shrimp (allergic), extra spicy, etc."
+				rows="3"
+			></textarea>
+
 			<label for="quantity" class="mb-2 block text-sm font-medium">Quantity:</label>
 			<div class="mb-6 flex justify-between">
 				<button on:click={decreaseQuantity} class="flex-1 rounded-md border border-gray-300 p-3"
@@ -1084,47 +1669,91 @@
 {/if}
 
 {#if isWaiterCodePopupVisible}
-	<div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70">
-		<div class="w-full max-w-md rounded-lg bg-white p-8 shadow-lg">
+	<div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-90 z-50">
+		<div class="relative w-full max-w-md rounded-lg bg-white p-8 shadow-xl">
 			<h2 class="mb-4 text-center text-2xl font-bold">Enter Waiter Code</h2>
 			<p class="mb-4 text-center text-gray-600">Please enter your waiter code to process this order</p>
-			<input
-				type="text"
-				bind:value={waiterCode}
-				maxlength="6"
-				class="w-full rounded border border-gray-300 p-2 text-center text-2xl"
-				placeholder="Enter waiter code"
-				readonly
-			/>
-			
-			<!-- Numeric Keypad -->
-			<div class="mt-4 grid grid-cols-3 gap-2">
-				{#each [1, 2, 3, 4, 5, 6, 7, 8, 9, 'Clear', 0, '⌫'] as key}
-					<button
-						on:click={() => {
-							if (key === 'Clear') {
-								handleWaiterCodeClear();
-							} else if (key === '⌫') {
-								handleWaiterCodeBackspace();
-							} else {
-								handleWaiterCodeInput(key.toString());
-							}
-						}}
-						class="rounded-md p-3 text-lg font-bold 
-							{key === 'Clear' ? 'bg-yellow-500 text-white' : 
-							key === '⌫' ? 'bg-red-500 text-white' : 
-							'bg-gray-200 hover:bg-gray-300'}"
-					>
-						{key}
-					</button>
-				{/each}
+			<div
+				class="mb-6 w-full rounded border border-gray-300 p-4 text-center text-4xl font-bold h-20 flex items-center justify-center"
+			>
+				{waiterCode ? '*'.repeat(waiterCode.length) : ''}
 			</div>
 			
-			<div class="mt-4 flex justify-between">
-				<button on:click={closeWaiterCodePopup} class="rounded-md bg-red-500 px-4 py-2 text-white"
+			<!-- Numeric Keypad -->
+			<div class="mb-6">
+				<!-- Backspace and Clear buttons above the numeric keypad -->
+				<div class="mb-4 flex justify-between gap-2">
+					<button
+						on:click={handleWaiterCodeClear}
+						class="flex-1 flex h-16 items-center justify-center rounded-md bg-yellow-500 text-xl font-bold text-white"
+					>
+						Clear
+					</button>
+					<button
+						on:click={handleWaiterCodeBackspace}
+						class="flex-1 flex h-16 items-center justify-center rounded-md bg-red-500 text-xl font-bold text-white"
+					>
+						⌫
+					</button>
+				</div>
+				
+				<!-- Numbers row -->
+				<div class="mb-4 flex justify-center gap-2">
+					{#each [1, 2, 3, 4, 5, 6, 7, 8, 9, 0] as num}
+						<button
+							on:click={() => handleWaiterCodeInput(num.toString())}
+							class="flex h-16 w-16 items-center justify-center rounded-md bg-gray-200 text-2xl font-bold hover:bg-gray-300"
+						>
+							{num}
+						</button>
+					{/each}
+				</div>
+			</div>
+
+			<!-- Letter Keypad in QWERTY layout -->
+			<div class="mt-6">
+				<!-- First row -->
+				<div class="mb-2 flex justify-center gap-1">
+					{#each ['Q','W','E','R','T','Y','U','I','O','P'] as letter}
+						<button
+							on:click={() => handleWaiterCodeInput(letter)}
+							class="flex h-16 w-11 items-center justify-center rounded-md bg-blue-100 text-xl font-bold hover:bg-blue-200"
+						>
+							{letter}
+						</button>
+					{/each}
+				</div>
+				
+				<!-- Second row -->
+				<div class="mb-2 flex justify-center gap-1">
+					{#each ['A','S','D','F','G','H','J','K','L'] as letter}
+						<button
+							on:click={() => handleWaiterCodeInput(letter)}
+							class="flex h-16 w-11 items-center justify-center rounded-md bg-blue-100 text-xl font-bold hover:bg-blue-200"
+						>
+							{letter}
+						</button>
+					{/each}
+				</div>
+				
+				<!-- Third row -->
+				<div class="mb-2 flex justify-center gap-1">
+					{#each ['Z','X','C','V','B','N','M'] as letter}
+						<button
+							on:click={() => handleWaiterCodeInput(letter)}
+							class="flex h-16 w-11 items-center justify-center rounded-md bg-blue-100 text-xl font-bold hover:bg-blue-200"
+						>
+							{letter}
+						</button>
+					{/each}
+				</div>
+			</div>
+			
+			<div class="mt-6 flex justify-between">
+				<button on:click={closeWaiterCodePopup} class="rounded-md bg-red-500 px-8 py-4 text-xl font-bold text-white"
 					>Cancel</button
 				>
-				<button on:click={verifyWaiterCode} class="rounded-md bg-blue-500 px-4 py-2 text-white"
+				<button on:click={verifyWaiterCode} class="rounded-md bg-blue-500 px-8 py-4 text-xl font-bold text-white"
 					>Confirm</button
 				>
 			</div>
@@ -1149,4 +1778,129 @@
 			<img src="./icon.png" alt="Fallback description if image fails to load" class="max-w-full h-auto" aria-hidden="true" />
 		</div>
 	</button>
+{/if}
+
+<!-- Table Details Modal -->
+{#if isTableDetailsModalVisible}
+    <div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-90 z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+            <!-- Modal Header -->
+            <div class="bg-blue-600 text-white px-6 py-4 flex justify-between items-center">
+                <h2 class="text-2xl font-bold">Table {selectedTableDetails.tableNumber} Orders</h2>
+                <button 
+                    on:click={closeTableDetailsModal}
+                    class="bg-blue-700 hover:bg-blue-800 rounded-full p-2 focus:outline-none"
+                >
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            
+            <!-- Modal Body -->
+            <div class="p-6 overflow-y-auto flex-grow">
+                {#if selectedTableItems.length > 0}
+                    <!-- Group items by receipt number -->
+                    {#each [...new Set(selectedTableItems.map(item => item.receipt_number))].sort() as receiptNumber}
+                        <div class="mb-8 border border-gray-200 rounded-lg shadow-md">
+                            <div class="bg-gray-100 px-4 py-3 border-b rounded-t-lg">
+                                <div class="flex justify-between items-center">
+                                    <h3 class="text-lg font-bold text-gray-800">Order #{receiptNumber}</h3>
+                                    <div>
+                                        {#if selectedTableItems.find(item => item.receipt_number === receiptNumber)?.waiter_name}
+                                            <span class="text-sm text-gray-600 mr-4">
+                                                Waiter: {selectedTableItems.find(item => item.receipt_number === receiptNumber)?.waiter_name}
+                                            </span>
+                                        {/if}
+                                        <span class={`px-3 py-1 rounded-full text-xs font-bold 
+                                            ${selectedTableItems.find(item => item.receipt_number === receiptNumber)?.order_status === 'pending' ? 'bg-red-500 text-white' : ''} 
+                                            ${selectedTableItems.find(item => item.receipt_number === receiptNumber)?.order_status === 'processing' ? 'bg-yellow-500 text-white' : ''} 
+                                            ${selectedTableItems.find(item => item.receipt_number === receiptNumber)?.order_status === 'done' ? 'bg-green-500 text-white' : ''}`}
+                                        >
+                                            {selectedTableItems.find(item => item.receipt_number === receiptNumber)?.order_status}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="p-4">
+                                <div class="overflow-x-auto">
+                                    <table class="min-w-full divide-y divide-gray-200">
+                                        <thead class="bg-gray-50">
+                                            <tr>
+                                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
+                                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Size</th>
+                                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Addons</th>
+                                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
+                                                <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Delivered</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="bg-white divide-y divide-gray-200">
+                                            {#each selectedTableItems.filter(item => item.receipt_number === receiptNumber) as item}
+                                                <tr class={`hover:bg-gray-50 ${item.delivered ? 'bg-green-50' : ''}`}>
+                                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.order_name}</td>
+                                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.order_size}</td>
+                                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.order_quantity}</td>
+                                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                        {#if item.order_addons !== 'None' || item.order_addons2 !== 'None' || item.order_addons3 !== 'None'}
+                                                            <ul class="list-disc pl-5">
+                                                                {#if item.order_addons && item.order_addons !== 'None'}<li>{item.order_addons} (+₱{item.order_addons_price})</li>{/if}
+                                                                {#if item.order_addons2 && item.order_addons2 !== 'None'}<li>{item.order_addons2} (+₱{item.order_addons_price2})</li>{/if}
+                                                                {#if item.order_addons3 && item.order_addons3 !== 'None'}<li>{item.order_addons3} (+₱{item.order_addons_price3})</li>{/if}
+                                                            </ul>
+                                                        {:else}
+                                                            None
+                                                        {/if}
+                                                    </td>
+                                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900 font-semibold">₱{item.item_total_price}</td>
+                                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-center">
+                                                        <div class="flex items-center justify-center">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={item.delivered} 
+                                                                on:change={() => toggleDeliveryStatus(item)}
+                                                                class="h-5 w-5 text-blue-600 rounded focus:ring-blue-500"
+                                                                aria-label="Mark as delivered"
+                                                            />
+                                                            <span class="ml-2 text-sm text-gray-500 sr-only">
+                                                                {item.delivered ? 'Delivered' : 'Not delivered'}
+                                                            </span>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            {/each}
+                                            <!-- Total row -->
+                                            <tr class="bg-gray-50">
+                                                <td colspan="4" class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900 text-right">Total:</td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-right text-gray-900">
+                                                    ₱{selectedTableItems
+                                                        .filter(item => item.receipt_number === receiptNumber)
+                                                        .reduce((total, item) => total + parseFloat(item.item_total_price.toString()), 0)
+                                                        .toFixed(2)}
+                                                </td>
+                                                <td></td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    {/each}
+                {:else}
+                    <p class="text-center text-gray-500 py-8">No detailed order information available for this table.</p>
+                {/if}
+            </div>
+            
+            <!-- Modal Footer -->
+            <div class="bg-gray-100 px-6 py-4 border-t">
+                <button 
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded focus:outline-none focus:shadow-outline"
+                    on:click={closeTableDetailsModal}
+                >
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
 {/if}

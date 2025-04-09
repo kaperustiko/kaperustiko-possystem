@@ -100,10 +100,7 @@
             showAlert('Product uploaded successfully', 'success');
             showPopup = false;
             
-            // Delay the reload to ensure the success message is visible
-            setTimeout(() => {
-                window.location.reload();
-            }, 2000);
+     
 
         } catch (error) {
             console.error('Error:', error);
