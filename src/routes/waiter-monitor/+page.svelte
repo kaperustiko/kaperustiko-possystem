@@ -105,6 +105,9 @@
 		fetchOrders();
 		fetchQueuedOrders();
 		fetchCashierName(); // Automatically fetch cashier name on mount
+		updateTime(); // Initialize time immediately
+		// Set up timer to update time every minute
+		const timeInterval = setInterval(updateTime, 60000);
 		// Retrieve ordered items from localStorage
 		const storedItems = localStorage.getItem('orderedItems');
 		if (storedItems) {
@@ -115,6 +118,10 @@
 		refreshInterval = setInterval(fetchQueuedOrders, 500); // Set interval for refreshing orders
 		fetchTableStatus();
 		fetchReserveTables();
+		
+		return () => {
+			clearInterval(timeInterval); // Clean up time interval on unmount
+		};
 	});
 
 	onDestroy(() => {
@@ -279,129 +286,166 @@
 	}
 
 	function saveQueOrder() {
-		// Prepare the receipt data
-		const receiptData = {
-			receiptNumber: parseInt(orderNumber.replace('#', '')), // Convert to integer
-			date: new Date().toLocaleDateString(),
-			time: new Date().toLocaleTimeString(),
-			cashierName: cashierName,
-			waiterName: waiterName, // Add waiter name
-			waiterCode: waiterCode, // Add waiter code
-			table_number: selectedTableNumber, // Use the selected table number
-			itemsOrdered: orderedItems.map((item) => ({
-				order_name: item.order_name,
-				order_name2: item.order_name2,
-				order_quantity: 'x' + item.order_quantity,
-				order_size: item.order_size,
-				order_addons: item.order_addons !== 'None' ? item.order_addons : undefined,
-				order_addons_price: item.order_addons_price || 0,
-				order_addons2: item.order_addons2 !== 'None' ? item.order_addons2 : undefined,
-				order_addons_price2: item.order_addons_price2 || 0,
-				order_addons3: item.order_addons3 !== 'None' ? item.order_addons3 : undefined,
-				order_addons_price3: item.order_addons_price3 || 0,
-				basePrice: item.basePrice // Include the base price of the item
-			})),
-			totalAmount: Math.round(
-				orderedItems.reduce(
-					(total, item) =>
-						total + parseFloat(item.order_price.toString().replace('₱', '').replace(',', '')),
-					0
-				)
-			),
-			amountPaid: payment ? Math.round(parseFloat(payment.replace('₱', '').replace(',', ''))) : 0,
-			change:
-				orderedItems.length > 0 && payment
-					? Math.round(
-							parseFloat(payment.replace('₱', '').replace(',', '')) -
-								orderedItems.reduce(
-									(total, item) =>
-										total +
-										parseFloat(item.order_price.toString().replace('₱', '').replace(',', '')),
-									0
-								)
-						)
-						: 0,
-			order_take: isDineIn ? 'Dine In' : 'Take Out', // Ensure this key matches
-			saveQueOrder: true // Add this line to indicate saving to que_orders
-		};
-
-		console.log('Sending order data with waiter:', waiterName, waiterCode);
-
-		// Send data to the server
-		fetch('http://localhost/kaperustiko-possystem/backend/modules/save_que_order.php', {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json'
-			},
-			body: JSON.stringify(receiptData)
-		})
+		// Fetch the unique que order number first
+		fetch('http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getTotalQueOrders')
 			.then((response) => {
 				if (!response.ok) {
 					return response.text().then(text => {
-						throw new Error('Server response not OK: ' + text);
+						throw new Error('Failed to fetch queue order number: ' + text);
 					});
 				}
 				return response.json();
 			})
-			.then((data) => {
-				if (data.error) {
-					console.error('Error saving order:', data.error);
-					showAlert(data.error, 'error');
-					return;
+			.then((queueData) => {
+				// Create a unique receipt number for que orders
+				console.log('Received queue order data:', queueData);
+				
+				// Check if total_order exists in the response
+				if (!queueData || typeof queueData.total_order === 'undefined') {
+					// Use timestamp as fallback if total_order is missing
+					const timestamp = new Date().getTime().toString().slice(-6);
+					return processOrder(parseInt(timestamp));
 				}
 				
-				console.log('Order saved:', data);
-				showAlert('Order queued successfully!', 'success');
-				
-				// After successful order, update table status
-				fetchTableStatus();
-				
-				// Call updateQuantity for each ordered item
-				orderedItems.forEach((item) => {
-					const code = item.code;
-					console.log('Updating inventory for:', code);
-					fetch(`http://localhost/kaperustiko-possystem/backend/modules/qty_data.php?code=${code}&order_quantity=${item.order_quantity}`, {
-						method: 'GET'
-					})
-						.then((response) => response.json())
-						.then((data) => {
-							if (data.status === 'success') {
-								console.log('Inventory updated:', data.message);
-							} else {
-								console.error('Inventory update error:', data.message);
-							}
-						})
-						.catch((error) => {
-							console.error('Error updating quantity:', error);
-						});
-				});
-				
-				// Now delete all orders from the orders table
-				fetch('http://localhost/kaperustiko-possystem/backend/modules/delete.php?action=deleteAllOrders', {
-					method: 'DELETE'
-				})
-					.then(response => response.json())
-					.then(data => {
-						console.log('Orders cleared:', data);
-					})
-					.catch(error => {
-						console.error('Error clearing orders:', error);
-					});
-				
-				// Clear ordered items
-				orderedItems = [];
-				// Reset waiter code
-				waiterCode = '';
-				waiterName = '';
-				// Reset table number selection
-				selectedTableNumber = '';
-				// Reset payment
-				payment = '';
+				const queueOrderNumber = queueData.total_order.toString().padStart(2, '0');
+				return processOrder(parseInt(queueOrderNumber));
 			})
 			.catch((error) => {
-				console.error('Error:', error);
-				showAlert('Failed to queue order. Please try again.', 'error');
+				console.error('Error fetching total que orders:', error);
+				showAlert('Failed to fetch queue order number. Using timestamp instead.', 'error');
+				
+				// Fallback to using timestamp as order number if fetch fails
+				const timestamp = new Date().getTime().toString().slice(-6);
+				processOrder(parseInt(timestamp));
 			});
+			
+		// Function to process the order with the given receipt number
+		function processOrder(receiptNum: number) {
+			// Prepare the receipt data
+			const receiptData = {
+				receiptNumber: receiptNum,
+				date: new Date().toLocaleDateString(),
+				time: new Date().toLocaleTimeString(),
+				cashierName: cashierName,
+				waiterName: waiterName, // Add waiter name
+				waiterCode: waiterCode, // Add waiter code
+				table_number: selectedTableNumber, // Use the selected table number
+				itemsOrdered: orderedItems.map((item) => ({
+					order_name: item.order_name,
+					order_name2: item.order_name2,
+					order_quantity: 'x' + item.order_quantity,
+					order_size: item.order_size,
+					order_addons: item.order_addons !== 'None' ? item.order_addons : undefined,
+					order_addons_price: item.order_addons_price || 0,
+					order_addons2: item.order_addons2 !== 'None' ? item.order_addons2 : undefined,
+					order_addons_price2: item.order_addons_price2 || 0,
+					order_addons3: item.order_addons3 !== 'None' ? item.order_addons3 : undefined,
+					order_addons_price3: item.order_addons_price3 || 0,
+					basePrice: item.basePrice, // Include the base price of the item
+					delivered: "0" // Add delivered property initialized to "0" (not delivered)
+				})),
+				totalAmount: Math.round(
+					orderedItems.reduce(
+						(total, item) =>
+							total + parseFloat(item.order_price.toString().replace('₱', '').replace(',', '')),
+						0
+					)
+				),
+				amountPaid: payment ? Math.round(parseFloat(payment.replace('₱', '').replace(',', ''))) : 0,
+				change:
+					orderedItems.length > 0 && payment
+						? Math.round(
+								parseFloat(payment.replace('₱', '').replace(',', '')) -
+									orderedItems.reduce(
+										(total, item) =>
+											total +
+											parseFloat(item.order_price.toString().replace('₱', '').replace(',', '')),
+										0
+									)
+							)
+							: 0,
+				order_take: isDineIn ? 'Dine In' : 'Take Out', // Ensure this key matches
+				saveQueOrder: true // Add this line to indicate saving to que_orders
+			};
+
+			console.log('Sending order data with waiter:', waiterName, waiterCode);
+
+			// Send data to the server
+			fetch('http://localhost/kaperustiko-possystem/backend/modules/save_que_order.php', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify(receiptData)
+			})
+				.then((response) => {
+					if (!response.ok) {
+						return response.text().then(text => {
+							throw new Error('Server response not OK: ' + text);
+						});
+					}
+					return response.json();
+				})
+				.then((data) => {
+					if (data.error) {
+						console.error('Error saving order:', data.error);
+						showAlert(data.error, 'error');
+						return;
+					}
+					
+					console.log('Order saved:', data);
+					showAlert('Order queued successfully!', 'success');
+					
+					// After successful order, update table status
+					fetchTableStatus();
+					
+					// Call updateQuantity for each ordered item
+					orderedItems.forEach((item) => {
+						const code = item.code;
+						console.log('Updating inventory for:', code);
+						fetch(`http://localhost/kaperustiko-possystem/backend/modules/qty_data.php?code=${code}&order_quantity=${item.order_quantity}`, {
+							method: 'GET'
+						})
+							.then((response) => response.json())
+							.then((data) => {
+								if (data.status === 'success') {
+									console.log('Inventory updated:', data.message);
+								} else {
+									console.error('Inventory update error:', data.message);
+								}
+							})
+							.catch((error) => {
+								console.error('Error updating quantity:', error);
+							});
+					});
+					
+					// Now delete all orders from the orders table
+					fetch('http://localhost/kaperustiko-possystem/backend/modules/delete.php?action=deleteAllOrders', {
+						method: 'DELETE'
+					})
+						.then(response => response.json())
+						.then(data => {
+							console.log('Orders cleared:', data);
+						})
+						.catch(error => {
+							console.error('Error clearing orders:', error);
+						});
+					
+					// Clear ordered items
+					orderedItems = [];
+					// Reset waiter code
+					waiterCode = '';
+					waiterName = '';
+					// Reset table number selection
+					selectedTableNumber = '';
+					// Reset payment
+					payment = '';
+				})
+				.catch((error) => {
+					console.error('Error:', error);
+					showAlert('Failed to queue order. Please try again.', 'error');
+				});
+		}
 	}
 
 	function showAlert(message: string, type: string) {
@@ -700,20 +744,133 @@
 	// Function to fetch detailed order items for a table
 	async function fetchTableOrderDetails(tableNumber: string) {
 		try {
+			// Show loading indicator
+			showAlert('Loading order details...', 'info');
+			
+			console.log(`Fetching order details for table ${tableNumber}`);
+			
+			// Get queued orders for the table to check expectations
+			const expectedOrders = queuedOrders.filter(order => order.table_number === tableNumber);
+			console.log(`Table ${tableNumber} should have ${expectedOrders.length} orders:`, 
+				expectedOrders.map(o => o.receipt_number));
+			
+			// Fetch order details
 			const response = await fetch(`http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getTableOrderDetails&table_number=${tableNumber}`);
-			if (response.ok) {
-				const data = await response.json();
-				console.log('Table order details:', data); // Log for debugging
-				// Add delivered property to each item
-				selectedTableItems = data.map((item: any) => ({
-					...item,
-					delivered: item.delivered === "1" || false
-				}));
-				isTableDetailsModalVisible = true;
-			} else {
-				console.error('Failed to fetch table order details');
-				showAlert('Failed to fetch order details', 'error');
+			if (!response.ok) {
+				console.error(`HTTP error ${response.status}: ${response.statusText}`);
+				showAlert(`Failed to fetch order details (${response.status})`, 'error');
+				return;
 			}
+			
+			let data;
+			try {
+				const text = await response.text();
+				console.log("Raw response:", text);
+				data = JSON.parse(text);
+			} catch (error) {
+				console.error("Error parsing response:", error);
+				showAlert("Error parsing server response", 'error');
+				return;
+			}
+			
+			console.log('Table order details:', data);
+			
+			if (data && data.error) {
+				console.error('Error in response:', data.error);
+				showAlert('Error: ' + data.error, 'error');
+				return;
+			}
+			
+			// Process the fetched data
+			if (Array.isArray(data) && data.length > 0) {
+				// Process each item to ensure the delivered property is correctly formatted
+				selectedTableItems = data.map((item: any) => {
+					// Convert delivered property to a consistent format
+					let isDelivered = false;
+					if (typeof item.delivered === 'string') {
+						isDelivered = item.delivered === "1";
+					} else if (typeof item.delivered === 'boolean') {
+						isDelivered = item.delivered;
+					} else if (item.delivered === 1 || item.delivered === 0) {
+						isDelivered = item.delivered === 1;
+					}
+					
+					return {
+						...item,
+						delivered: isDelivered
+					};
+				});
+				
+				// Check if we have all expected orders
+				const fetchedReceipts = [...new Set(selectedTableItems.map(item => item.receipt_number))];
+				console.log(`Found ${fetchedReceipts.length} orders with ${selectedTableItems.length} items`);
+				
+				// Check if we're missing any orders
+				const missingReceipts = expectedOrders.filter(order => 
+					!fetchedReceipts.includes(order.receipt_number)).map(order => order.receipt_number);
+				
+				if (missingReceipts.length > 0) {
+					console.log(`Missing ${missingReceipts.length} receipts: ${missingReceipts.join(', ')}`);
+					
+					// Try to fetch each missing receipt individually
+					for (const receiptNumber of missingReceipts) {
+						try {
+							const receiptResponse = await fetch(
+								`http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getOrderItemsByReceipt&receipt_number=${receiptNumber}`
+							);
+							
+							if (receiptResponse.ok) {
+								const receiptData = await receiptResponse.json();
+								console.log(`Fetched additional data for receipt ${receiptNumber}:`, receiptData);
+								
+								if (Array.isArray(receiptData) && receiptData.length > 0) {
+									// Process these items and add them to selectedTableItems
+									const formattedItems = receiptData.map((item: any) => {
+										let isDelivered = false;
+										if (typeof item.delivered === 'string') {
+											isDelivered = item.delivered === "1";
+										} else if (typeof item.delivered === 'boolean') {
+											isDelivered = item.delivered;
+										} else if (item.delivered === 1 || item.delivered === 0) {
+											isDelivered = item.delivered === 1;
+										}
+										
+										return {
+											...item,
+											delivered: isDelivered,
+											table_number: tableNumber // Ensure table number is set
+										};
+									});
+									
+									// Add the newly fetched items
+									selectedTableItems = [...selectedTableItems, ...formattedItems];
+								}
+							} else {
+								console.error(`Failed to fetch receipt ${receiptNumber}`);
+							}
+						} catch (error) {
+							console.error(`Error fetching receipt ${receiptNumber}:`, error);
+						}
+					}
+				}
+				
+				// Final count of orders after all fetches
+				const finalReceipts = [...new Set(selectedTableItems.map(item => item.receipt_number))];
+				console.log(`Final count: ${finalReceipts.length} orders with ${selectedTableItems.length} items`);
+				
+				if (selectedTableItems.length > 0) {
+					showAlert(`Loaded ${selectedTableItems.length} items from ${finalReceipts.length} orders`, 'success');
+				} else {
+					showAlert('No items found for this table', 'warning');
+				}
+			} else {
+				console.log('No items returned from API for table', tableNumber);
+				showAlert('No order details found for this table', 'info');
+			}
+			
+			// Show the modal regardless, even if empty (will show "No items" message)
+			isTableDetailsModalVisible = true;
+			
 		} catch (error) {
 			console.error('Error fetching table order details:', error);
 			showAlert('Error loading order details', 'error');
@@ -723,9 +880,14 @@
 	// Function to toggle delivery status of an item
 	async function toggleDeliveryStatus(item: TableOrderItem) {
 		const originalDelivered = item.delivered;
-		item.delivered = !item.delivered;
+		// Update locally for immediate UI feedback
+		item.delivered = !originalDelivered;
 		
 		try {
+			// Log the item details for debugging
+			console.log('Item details being updated:', item);
+			
+			// Prepare the payload with consistent format
 			const payload = {
 				receipt_number: item.receipt_number,
 				order_name: item.order_name,
@@ -735,6 +897,9 @@
 			
 			console.log('Sending delivery status update:', payload);
 			
+			// Log more information for debugging
+			console.log(`Updating item: ${item.order_name} (${item.order_size}) in receipt ${item.receipt_number}`);
+			
 			const response = await fetch(`http://localhost/kaperustiko-possystem/backend/modules/update.php?action=updateDeliveryStatus`, {
 				method: 'POST',
 				headers: {
@@ -743,14 +908,16 @@
 				body: JSON.stringify(payload)
 			});
 			
-			console.log('Response status:', response.status, response.statusText);
+			if (!response.ok) {
+				throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+			}
+			
 			const responseText = await response.text();
 			console.log('Response text:', responseText);
 			
 			let result;
 			try {
 				result = JSON.parse(responseText);
-				console.log('Parsed result:', result);
 			} catch (e) {
 				console.error('Failed to parse JSON response:', e);
 				showAlert('Error parsing server response', 'error');
@@ -759,11 +926,8 @@
 			}
 			
 			if (result.success) {
-				let message = item.delivered ? 'Item marked as delivered' : 'Item unmarked as delivered';
-				
-				// If the status was changed to 'done', update all items with this receipt number
+				// If the status was changed (either to done or back to pending)
 				if (result.status_changed) {
-					message += ' and order marked as DONE';
 					// Update all items with the same receipt number to show the new status
 					selectedTableItems.forEach(i => {
 						if (i.receipt_number === item.receipt_number) {
@@ -771,26 +935,93 @@
 						}
 					});
 					
-					// Also update the order in the queuedOrders list
+					// Update the order in the queuedOrders list
 					const orderToUpdate = queuedOrders.find(order => order.receipt_number === item.receipt_number);
 					if (orderToUpdate) {
 						orderToUpdate.order_status = result.new_status;
 					}
 					
-					// Force a UI update by triggering a state change
+					// Update UI
 					selectedTableItems = [...selectedTableItems];
 					queuedOrders = [...queuedOrders];
+					
+					// Show appropriate message based on new status
+					if (result.new_status === 'done') {
+						showAlert("All items delivered! Order marked as DONE", 'success');
+					} else {
+						showAlert("Order status changed to PENDING as not all items are delivered", 'success');
+					}
+				} else {
+					// Status didn't change but the item was updated
+					// Count remaining undelivered items
+					const undeliveredItems = selectedTableItems.filter(i => 
+						i.receipt_number === item.receipt_number && 
+						(typeof i.delivered === 'string' ? i.delivered === "0" || i.delivered === "" : !i.delivered)
+					).length;
+					
+					let message = '';
+					if (typeof item.delivered === 'string' ? item.delivered === "1" : !!item.delivered) {
+						message = `Item marked as delivered. ${undeliveredItems} item(s) remaining.`;
+					} else {
+						message = "Item marked as not delivered.";
+					}
+					
+					showAlert(message, 'success');
 				}
 				
-				showAlert(message, 'success');
+				// Refresh table data to ensure we have the latest
+				await fetchTableOrderDetails(selectedTableDetails.tableNumber);
+				await fetchQueuedOrders();
 			} else {
 				console.error('Server returned error:', result.message);
 				
-				// If we got an "Item not found" error with available items, show a more helpful message
-				if (result.message && result.message.includes('Item not found in order') && result.available_items) {
+				// Handle item not found error by retrying with name alternatives
+				if (result.message && result.message.includes('Item not found in order')) {
 					console.log('Available items:', result.available_items);
 					
-					// Create a more detailed error message
+					// Try to find a matching item from the available items
+					if (result.available_items && result.available_items.length > 0) {
+						const availableItem = result.available_items[0];
+						const match = availableItem.match(/^([^-]+) - ([^ ]+)/);
+						
+						if (match) {
+							// Extract the name and size from the first available item
+							const exactName = match[1].trim();
+							const exactSize = match[2].trim();
+							
+							console.log(`Retrying with exact match: ${exactName} - ${exactSize}`);
+							
+							// Retry with exact name
+							const retryPayload = {
+								receipt_number: item.receipt_number,
+								order_name: exactName,
+								order_size: exactSize,
+								delivered: item.delivered ? "1" : "0"
+							};
+							
+							const retryResponse = await fetch(`http://localhost/kaperustiko-possystem/backend/modules/update.php?action=updateDeliveryStatus`, {
+								method: 'POST',
+								headers: {
+									'Content-Type': 'application/json'
+								},
+								body: JSON.stringify(retryPayload)
+							});
+							
+							if (retryResponse.ok) {
+								const retryResult = await retryResponse.json();
+								if (retryResult.success) {
+									showAlert(`Item "${exactName}" marked as delivered`, 'success');
+									
+									// Refresh data
+									await fetchTableOrderDetails(selectedTableDetails.tableNumber);
+									await fetchQueuedOrders();
+									return;
+								}
+							}
+						}
+					}
+					
+					// Create a detailed error message
 					let errorMessage = 'Item not found in order. ';
 					if (result.available_items.length > 0) {
 						errorMessage += `Available items: ${result.available_items.join(', ')}`;
@@ -798,10 +1029,9 @@
 					
 					showAlert(errorMessage, 'error');
 					
-					// Try to refresh the table data, there might be a mismatch
-					setTimeout(() => fetchTableOrderDetails(selectedTableDetails.tableNumber), 1000);
+					// Refresh table data - there might be a mismatch
+					await fetchTableOrderDetails(selectedTableDetails.tableNumber);
 				} else {
-					// Generic error
 					showAlert(result.message || 'Failed to update delivery status', 'error');
 				}
 				
@@ -809,10 +1039,12 @@
 				item.delivered = originalDelivered;
 			}
 		} catch (error) {
-			console.error('Network error updating delivery status:', error);
-			showAlert('Error communicating with server', 'error');
-			// Revert the change if update failed
-			item.delivered = originalDelivered;
+			console.error('Error updating delivery status:', error);
+			item.delivered = originalDelivered; // Revert to original state
+			showAlert('Failed to update delivery status', 'error');
+			
+			// Try to refresh data
+			await fetchTableOrderDetails(selectedTableDetails.tableNumber);
 		}
 	}
 	
@@ -845,8 +1077,9 @@
 
 <div class="flex h-screen">
 	<div class="flex flex-grow overflow-hidden bg-gray-100">
-		<div class="flex flex-col w-[1560] overflow-auto p-4">
-			<div class="mb-4 flex flex-wrap space-x-4">
+		<div class="flex flex-col w-full overflow-auto p-4">
+			<!-- Category buttons navigation -->
+			<div class="sticky top-0 z-10 bg-white shadow-md py-3 px-2 mb-4 flex flex-wrap space-x-4 border-b border-gray-200">
 				{#each ['All', 'Beverages', 'Food', 'Dessert', 'Coffee', 'Tea', 'Soda', 'Sandwich', 'Pasta', 'Burger', 'Ulam', 'Rice'] as category}
 					<button
 						class="rounded-md px-4 py-2 font-bold text-black transition duration-200"
@@ -861,6 +1094,7 @@
 				{/each}
 			</div>
 
+			<!-- Category display header -->
 			<div class="mb-4 flex items-center justify-between font-bold text-black">
 				{#if selectedCategory === 'All'}
 					<p>Display All Menu</p>
@@ -882,13 +1116,16 @@
 					<p>Display Ulam Menu</p>
 				{:else if selectedCategory === 'Rice'}
 					<p>Display Rice Menu</p>
-				{:else if selectedCategory === 'Desserts'}
-					<p>Display Desserts Menu</p>
+				{:else if selectedCategory === 'Pasta'}
+					<p>Display Pasta Menu</p>
+				{:else if selectedCategory === 'Burger'}
+					<p>Display Burger Menu</p>
 				{/if}
-				<p class="mr-4">{currentDay} - {currentTime}</p>
+				<p class="mr-4">{currentDay || ''} {currentTime ? '- ' + currentTime : ''}</p>
 			</div>
 
-			<div class="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3">
+			<!-- Grid of menu items -->
+			<div class="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 auto-rows-auto">
 				{#each cardData.filter((item) => selectedCategory === 'All' || item.label === selectedCategory || item.label2 === selectedCategory) as { code, title1, title2, price1, price2, price3, image, menu_no, label, label2, qty }}
 					<Card
 						{code}
@@ -909,7 +1146,8 @@
 		</div>
 	</div>
 
-	<div class="flex flex-col w-[950px]">
+	<!-- Right sidebar with fixed width -->
+	<div class="flex-none w-[700px]">
         
 		<!-- Orders Section -->
 		<div class="fixed right-[350px] top-0 flex h-full w-[350px] flex-col items-center bg-gray-100 p-4 shadow-lg">
@@ -1061,81 +1299,81 @@
                 </div>
 			</div>
 		</div>
-		</div>
 
 	<!-- Que Order Section -->
-			<div class="fixed right-0 top-0 flex h-full w-[350px] flex-col items-center bg-gray-100 p-4 shadow-lg">
-				<div class="mb-4 w-full rounded-md bg-green-800 py-2 text-center text-white">
-					<p class="text-sm font-bold">Que Orders</p>
-				</div>
-				<div class="mb-4 max-h-full w-full flex-grow space-y-2 overflow-y-auto">
-					{#if queuedOrders.length > 0}
-						<!-- Group orders by table -->
-						{#each [...new Set(queuedOrders.map(order => order.table_number))].sort((a, b) => Number(a) - Number(b)) as tableNum}
-							<div class="rounded-lg bg-blue-100 p-2 mb-3">
-								<div class="flex items-center justify-between bg-blue-500 text-white p-2 rounded-t-lg">
-									<h3 class="font-bold">Table {tableNum}</h3>
-									<span class="bg-white text-blue-500 px-2 py-1 rounded-full text-xs font-bold">
-										{queuedOrders.filter(order => order.table_number === tableNum).length} orders
-									</span>
-								</div>
-								
-								<!-- Make the whole table section clickable -->
-								<div 
-									class="p-2 bg-white rounded-b-lg cursor-pointer hover:bg-blue-50 transition-colors"
-									on:click={() => openTableDetails(tableNum)}
-								>
-									<p class="text-center text-blue-600 font-semibold mb-1">Click to view orders</p>
-									
-									{#each queuedOrders.filter(order => order.table_number === tableNum) as order}
-									<div class="flex flex-col rounded-lg bg-white p-4 shadow-md mt-2">
-										<div class="flex items-center justify-between">
-											<p class="text-gray-600">Order No: </p>
-											<span>{order.receipt_number}</span>
-										</div>
-										{#if order.waiter_name}
-										<div class="flex items-center justify-between">
-											<p class="text-gray-600">Waiter:</p>
-											<span>{order.waiter_name}</span>
-										</div>
-										{/if}
-										<div class="flex items-center justify-between">
-											<p class="font-semibold text-gray-800">Order Total Price:</p>
-											<span>₱{order.total_amount}</span>
-										</div>
-										<div class="flex items-center justify-between mb-2">
-											<p class="text-gray-600">Amount Paid:</p>
-											<span class={`font-semibold ${order.amount_paid == 0 ? 'bg-red-500 text-white rounded-md px-2 py-1 shadow-sm' : order.amount_paid > 0 ? 'bg-green-500 text-white rounded-md px-2 py-1 shadow-sm' : 'text-gray-800'}`}>
-												{order.amount_paid == 0 ? 'not paid' : `paid`}
-											</span>
-										</div>
-										<div class="flex items-center justify-between">
-											<p class="text-gray-600">Status:</p>
-											<span class={`font-semibold px-2 py-1 rounded-md 
-												${order.order_status === 'pending' ? 'bg-red-500 text-white' : ''} 
-												${order.order_status === 'processing' ? 'bg-yellow-500 text-white' : ''} 
-												${order.order_status === 'done' ? 'bg-green-500 text-white' : ''}`}>
-												{order.order_status}
-											</span>
-										</div>
-									</div>
-									{/each}
-								</div>
-							</div>
-						{/each}
-					{:else}
-						<p class="text-center text-gray-600 text-lg">No queued orders available.</p>
-					{/if}
-				</div>
-				<button on:click={() => isSleepActive = true} class="mt-2 w-full rounded-md bg-blue-500 px-4 py-2 text-white">
-					Sleep
-				</button>
+		<div class="fixed right-0 top-0 flex h-full w-[350px] flex-col items-center bg-gray-100 p-4 shadow-lg">
+			<div class="mb-4 w-full rounded-md bg-green-800 py-2 text-center text-white">
+				<p class="text-sm font-bold">Que Orders</p>
 			</div>
+			<div class="mb-4 max-h-full w-full flex-grow space-y-2 overflow-y-auto">
+				{#if queuedOrders.length > 0}
+					<!-- Group orders by table -->
+					{#each [...new Set(queuedOrders.map(order => order.table_number))].sort((a, b) => Number(a) - Number(b)) as tableNum}
+						<div class="rounded-lg bg-blue-100 p-2 mb-3">
+							<div class="flex items-center justify-between bg-blue-500 text-white p-2 rounded-t-lg">
+								<h3 class="font-bold">Table {tableNum}</h3>
+								<span class="bg-white text-blue-500 px-2 py-1 rounded-full text-xs font-bold">
+									{queuedOrders.filter(order => order.table_number === tableNum).length} orders
+								</span>
+							</div>
+							
+							<!-- Make the whole table section clickable -->
+							<div 
+								class="p-2 bg-white rounded-b-lg cursor-pointer hover:bg-blue-50 transition-colors"
+								on:click={() => openTableDetails(tableNum)}
+							>
+								<p class="text-center text-blue-600 font-semibold mb-1">Click to view orders</p>
+								
+								{#each queuedOrders.filter(order => order.table_number === tableNum) as order}
+								<div class="flex flex-col rounded-lg bg-white p-4 shadow-md mt-2">
+									<div class="flex items-center justify-between">
+										<p class="text-gray-600">Order No: </p>
+										<span>{order.receipt_number}</span>
+									</div>
+									{#if order.waiter_name}
+									<div class="flex items-center justify-between">
+										<p class="text-gray-600">Waiter:</p>
+										<span>{order.waiter_name}</span>
+									</div>
+									{/if}
+									<div class="flex items-center justify-between">
+										<p class="font-semibold text-gray-800">Order Total Price:</p>
+										<span>₱{order.total_amount}</span>
+									</div>
+									<div class="flex items-center justify-between mb-2">
+										<p class="text-gray-600">Amount Paid:</p>
+										<span class={`font-semibold ${order.amount_paid == 0 ? 'bg-red-500 text-white rounded-md px-2 py-1 shadow-sm' : order.amount_paid > 0 ? 'bg-green-500 text-white rounded-md px-2 py-1 shadow-sm' : 'text-gray-800'}`}>
+											{order.amount_paid == 0 ? 'not paid' : `paid`}
+										</span>
+									</div>
+									<div class="flex items-center justify-between">
+										<p class="text-gray-600">Status:</p>
+										<span class={`font-semibold px-2 py-1 rounded-md 
+											${order.order_status === 'pending' ? 'bg-red-500 text-white' : ''} 
+											${order.order_status === 'processing' ? 'bg-yellow-500 text-white' : ''} 
+											${order.order_status === 'done' ? 'bg-green-500 text-white' : ''}`}>
+											{order.order_status}
+										</span>
+									</div>
+								</div>
+								{/each}
+							</div>
+						</div>
+					{/each}
+				{:else}
+					<p class="text-center text-gray-600 text-lg">No queued orders available.</p>
+				{/if}
+			</div>
+			<button on:click={() => isSleepActive = true} class="mt-2 w-full rounded-md bg-blue-500 px-4 py-2 text-white">
+				Sleep
+			</button>
 		</div>
+	</div>
+</div>
 
 {#if isVariationVisible}
-	<div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70">
-		<div class="w-full max-w-md rounded-lg bg-white p-8 shadow-lg">
+	<div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-90 z-50">
+		<div class="relative w-full max-w-md rounded-lg bg-white p-8 shadow-xl">
 			<h2 class="mb-6 text-center text-2xl font-bold">
 				Add {selectedItem?.title1}
 				{selectedItem?.title2}
@@ -1147,7 +1385,7 @@
 				<img
 					src={`/foods/${selectedItem.image}`}
 					alt={selectedItem.title1}
-					class="mb-4 h-[400px] w-full rounded"
+					class="mb-4 h-[400px] w-full rounded object-cover"
 				/>
 			{/if}
 
@@ -1271,8 +1509,8 @@
 {/if}
 
 {#if isWaiterCodePopupVisible}
-	<div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70">
-		<div class="w-full max-w-md rounded-lg bg-white p-8 shadow-lg">
+	<div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-90 z-50">
+		<div class="relative w-full max-w-md rounded-lg bg-white p-8 shadow-xl">
 			<h2 class="mb-4 text-center text-2xl font-bold">Enter Waiter Code</h2>
 			<p class="mb-4 text-center text-gray-600">Please enter your waiter code to process this order</p>
 			<div
@@ -1384,7 +1622,7 @@
 
 <!-- Table Details Modal -->
 {#if isTableDetailsModalVisible}
-    <div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70 z-50">
+    <div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-90 z-50">
         <div class="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
             <!-- Modal Header -->
             <div class="bg-blue-600 text-white px-6 py-4 flex justify-between items-center">
