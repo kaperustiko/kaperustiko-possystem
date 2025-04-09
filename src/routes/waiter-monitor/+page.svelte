@@ -158,6 +158,7 @@
 		order_addons_price3: number;
 		basePrice: number;
 		code: string;
+		special_instructions?: string; // Add special instructions field
 	};
 
 	let selectedAddons: string[] = [];
@@ -498,23 +499,17 @@
 			return total + addonPrice; // Sum up the prices
 		}, 0); // Initialize total to 0
 
-		const newItem = {
-			title: item.title1,
-			price: formatPrice(quantity * (basePrice + totalAddonsPrice)), // Correctly calculate total price
-			originalPrice: formatPrice(basePrice),
-			size: selectedSize,
-			quantity: quantity,
-			addons: selectedAddons,
-			basePrice: basePrice, // Add basePrice to the newItem
-			addonsPrices: selectedAddons
-				.map((addon) => {
-					const price = calculateAddonsPrice([addon]); // Get individual addon price
-					return `${addon} - ₱${price}`; // Format as "Addon - Price"
-				})
-				.join(', '), // Join the prices into a single string
-			code: item.code
-		};
-		orderedItems = [...orderedItems];
+		// Check if this item already exists in the cart with the same specifications
+		const existingItemIndex = orderedItems.findIndex(existingItem => 
+			existingItem.code === item.code && 
+			existingItem.order_size === selectedSize && 
+			existingItem.order_addons === (selectedAddons.length > 0 ? selectedAddons[0] : 'None') &&
+			existingItem.order_addons2 === (selectedAddons.length > 1 ? selectedAddons[1] : 'None') &&
+			existingItem.order_addons3 === (selectedAddons.length > 2 ? selectedAddons[2] : 'None') &&
+			existingItem.special_instructions === specialInstructions // Also check if special instructions match
+		);
+
+		const totalOrderPrice = basePrice * quantity + totalAddonsPrice; // Calculate total price
 
 		// Prepare data to send to the server
 		type OrderData = {
@@ -524,21 +519,19 @@
 			order_size: string;
 			order_price: number;
 			order_image: string;
-			order_addons?: string; // Add optional properties for addons
+			order_addons?: string;
 			order_addons_price?: number;
 			order_addons2?: string;
 			order_addons_price2?: number;
 			order_addons3?: string;
 			order_addons_price3?: number;
-			basePrice: number; // Add basePrice to the OrderData type
+			basePrice: number;
 			code: string;
 			table_number: string;
+			special_instructions: string; // Add special instructions field
 		};
 
-		const currentAddonsPrice = calculateAddonsPrice(selectedAddons); // Renamed variable
-		const totalOrderPrice = basePrice * quantity + totalAddonsPrice; // Calculate total price
-
-		// Update the orderData to include the correct order_price
+		// Create the order data
 		const orderData: OrderData = {
 			order_name: item.title1,
 			order_name2: item.title2,
@@ -546,7 +539,7 @@
 			order_size: selectedSize,
 			order_price: totalOrderPrice, // Calculate total price as a number
 			order_image: item.image,
-			basePrice: basePrice, // Change this line to reflect the original price
+			basePrice: basePrice, // Original price without quantity or addons
 			// Add-ons handling
 			order_addons: selectedAddons.length > 0 ? selectedAddons[0] : 'None',
 			order_addons_price:
@@ -564,12 +557,55 @@
 					? parseFloat(calculateAddonsPrice([selectedAddons[2]]).replace('₱', '').replace(',', ''))
 					: 0,
 			code: item.code,
-			table_number: selectedTableNumber // Add table number to order data
+			table_number: selectedTableNumber,
+			special_instructions: specialInstructions // Add special instructions field
 		};
 
-		console.log('Order Data:', orderData); // Log the order data
-
-		// Save the order to the database
+		// If the item already exists, update the quantity and price instead of adding a new item
+		if (existingItemIndex !== -1) {
+			// First, remove the existing item from the database
+			const existingItem = orderedItems[existingItemIndex];
+			
+			fetch(
+				`http://localhost/kaperustiko-possystem/backend/modules/delete.php?action=voidOrder&order_name=${encodeURIComponent(existingItem.order_name)}&order_size=${encodeURIComponent(existingItem.order_size)}&index=${existingItemIndex}`,
+				{
+					method: 'DELETE'
+				}
+			).then((response) => response.json())
+			.then(() => {
+				// Update the quantity and price - ensure numeric addition with parseInt
+				const currentQuantity = Number(existingItem.order_quantity);
+				const qtyToAdd = Number(quantity);
+				const newQuantity = currentQuantity + qtyToAdd;
+				
+				// Update the orderData with the new quantity and recalculated price
+				orderData.order_quantity = newQuantity;
+				orderData.order_price = (basePrice * newQuantity) + (totalAddonsPrice * newQuantity / qtyToAdd);
+				
+				// Update the local state
+				const updatedItems = [...orderedItems];
+				updatedItems[existingItemIndex] = {
+					...existingItem,
+					order_quantity: newQuantity,
+					order_price: orderData.order_price
+				};
+				
+				// Save the order with updated quantity to the database
+				saveOrderToDatabase(orderData, updatedItems);
+			})
+			.catch((error) => {
+				console.error('Error updating order quantity:', error);
+				// If deletion fails, add as a new item as fallback
+				saveOrderToDatabase(orderData, [...orderedItems]);
+			});
+		} else {
+			// Item doesn't exist, add as new
+			saveOrderToDatabase(orderData, [...orderedItems]);
+		}
+	}
+	
+	// Helper function to save order to database
+	function saveOrderToDatabase(orderData: any, updatedItems: any[]) {
 		fetch('http://localhost/kaperustiko-possystem/backend/modules/insert.php?action=save_order', {
 			method: 'POST',
 			headers: {
@@ -577,6 +613,81 @@
 			},
 			body: JSON.stringify(orderData)
 		})
+		.then((response) => {
+			if (!response.ok) {
+				return response.text().then((text) => {
+					throw new Error(text);
+				});
+			}
+			return response.json();
+		})
+		.then((data) => {
+			console.log(data.message);
+			orderedItems = updatedItems;
+			// Save the order to localStorage
+			localStorage.setItem('orderedItems', JSON.stringify(orderedItems));
+		})
+		.catch((error) => {
+			console.error('Error saving order:', error);
+		})
+		.finally(() => {
+			fetchOrders();
+			selectedItem = null;
+			selectedSize = 'Regular';
+			selectedAddons = [];
+			specialInstructions = ''; // Reset special instructions
+			quantity = 1; // Reset quantity to 1
+			closePopup();
+		});
+	}
+
+	// Function to update quantity of an existing item
+	function updateItemQuantity(index: number, newQuantity: number) {
+		// Ensure newQuantity is a proper number
+		newQuantity = parseInt(String(newQuantity), 10);
+		
+		if (newQuantity < 1) {
+			// If quantity is less than 1, void the item
+			voidOrder(index);
+			return;
+		}
+		
+		const item = orderedItems[index];
+		
+		// First, remove the existing item from the database
+		fetch(
+			`http://localhost/kaperustiko-possystem/backend/modules/delete.php?action=voidOrder&order_name=${encodeURIComponent(item.order_name)}&order_size=${encodeURIComponent(item.order_size)}&index=${index}`,
+			{
+				method: 'DELETE'
+			}
+		).then((response) => response.json())
+		.then(() => {
+			// Calculate the unit price (price per item without quantity)
+			const unitPrice = Number(item.basePrice);
+			const addonsPrice = Number(item.order_addons_price || 0) + Number(item.order_addons_price2 || 0) + Number(item.order_addons_price3 || 0);
+			
+			// Create updated order data with preserved special instructions
+			const updatedOrderData = {
+				...item,
+				order_quantity: newQuantity,
+				order_price: (unitPrice * newQuantity) + (addonsPrice * newQuantity),
+				// Preserve special instructions if they exist
+				special_instructions: item.special_instructions || ''
+			};
+			
+			// Update local state first to provide immediate feedback
+			const updatedItems = [...orderedItems];
+			updatedItems[index] = updatedOrderData;
+			orderedItems = updatedItems;
+			
+			// Save the updated order to the database
+			fetch('http://localhost/kaperustiko-possystem/backend/modules/insert.php?action=save_order', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify(updatedOrderData)
+			})
 			.then((response) => {
 				if (!response.ok) {
 					return response.text().then((text) => {
@@ -586,22 +697,17 @@
 				return response.json();
 			})
 			.then((data) => {
-				console.log(data.message);
+				console.log('Order updated:', data.message);
+				localStorage.setItem('orderedItems', JSON.stringify(orderedItems));
+				fetchOrders();
 			})
 			.catch((error) => {
-				console.error('Error saving order:', error);
+				console.error('Error updating order:', error);
 			});
-
-		fetchOrders();
-
-		selectedItem = null;
-		selectedSize = 'Regular';
-		selectedAddons = [];
-		quantity = 1; // Reset quantity to 1
-		closePopup();
-
-		// Save the order to localStorage
-		localStorage.setItem('orderedItems', JSON.stringify(orderedItems)); // Store orderedItems in localStorage
+		})
+		.catch((error) => {
+			console.error('Error updating order quantity:', error);
+		});
 	}
 
 	function calculateAddonsPrice(addons: string[]): string {
@@ -1073,6 +1179,9 @@
 			console.error('Failed to fetch reserved tables', response.statusText);
 		}
 	}
+
+	// First, add a new variable to store special instructions
+	let specialInstructions = '';
 </script>
 
 <div class="flex h-screen">
@@ -1183,7 +1292,7 @@
 								<p class="text-gray-600">Code: {item.code}</p>
 							</div>
 							<div class="flex items-center justify-between">
-								<p class="font-semibold text-gray-800">{item.order_name} x {item.order_quantity}</p>
+								<p class="font-semibold text-gray-800">{item.order_name}</p>
 								<p class="text-right font-semibold text-gray-800">₱{item.order_price}.00</p>
 							</div>
 							<div class="flex items-center justify-between">
@@ -1211,9 +1320,44 @@
 									{/if}
 								</ul>
 							{/if}
-							<button on:click={() => voidOrder(index)} class="mt-2 text-center text-red-500"
-								>Void</button
-							>
+							
+							<!-- Special Instructions display -->
+							{#if item.special_instructions && item.special_instructions !== ''}
+								<div class="mt-2 bg-yellow-50 p-2 rounded-md">
+									<p class="text-xs font-medium text-yellow-800">Special instructions:</p>
+									<p class="text-sm text-gray-700">{item.special_instructions}</p>
+								</div>
+							{/if}
+							
+							<!-- Quantity controls -->
+							<div class="mt-2 flex items-center justify-between">
+								<div class="flex items-center">
+									<button 
+										on:click={() => {
+											const currentQty = Number(item.order_quantity);
+											updateItemQuantity(index, currentQty - 1);
+										}}
+										class="h-8 w-8 rounded-l bg-gray-200 font-bold text-gray-700 hover:bg-gray-300"
+									>
+										-
+									</button>
+									<span class="flex h-8 w-12 items-center justify-center bg-gray-100 text-center">
+										{item.order_quantity}
+									</span>
+									<button 
+										on:click={() => {
+											const currentQty = Number(item.order_quantity);
+											updateItemQuantity(index, currentQty + 1);
+										}}
+										class="h-8 w-8 rounded-r bg-gray-200 font-bold text-gray-700 hover:bg-gray-300"
+									>
+										+
+									</button>
+								</div>
+								<button on:click={() => voidOrder(index)} class="rounded-md bg-red-100 px-3 py-1 text-center text-red-600 hover:bg-red-200">
+									Void
+								</button>
+							</div>
 						</div>
 					{/each}
 				{:else}
@@ -1375,8 +1519,7 @@
 	<div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-90 z-50">
 		<div class="relative w-full max-w-md rounded-lg bg-white p-8 shadow-xl">
 			<h2 class="mb-6 text-center text-2xl font-bold">
-				Add {selectedItem?.title1}
-				{selectedItem?.title2}
+				Add {selectedItem?.title1} {selectedItem?.title2}
 			</h2>
 			<p class="mb-6 text-center text-lg">
 				Price: ₱{displayedPrice} (Add-ons: ₱{calculateAddonsPrice(selectedAddons)})
@@ -1474,6 +1617,16 @@
 					<!-- No add-ons for Ulam -->
 				{/if}
 			</div>
+
+			<!-- Special Instructions field -->
+			<label for="special-instructions" class="mb-2 block text-sm font-medium">Special Instructions:</label>
+			<textarea
+				id="special-instructions"
+				bind:value={specialInstructions}
+				class="mb-6 w-full rounded-md border border-gray-300 p-3 text-sm"
+				placeholder="E.g., Less ice, no shrimp (allergic), extra spicy, etc."
+				rows="3"
+			></textarea>
 
 			<label for="quantity" class="mb-2 block text-sm font-medium">Quantity:</label>
 			<div class="mb-6 flex justify-between">
