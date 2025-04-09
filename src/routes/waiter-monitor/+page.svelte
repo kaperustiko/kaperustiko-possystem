@@ -1205,6 +1205,32 @@
 
 	// First, add a new variable to store special instructions
 	let specialInstructions = '';
+
+	async function voidQueuedOrders() {
+		if (selectedTableDetails.orders.length > 0) {
+			for (const order of selectedTableDetails.orders) {
+				try {
+					const response = await fetch(`http://localhost/kaperustiko-possystem/backend/modules/delete.php?action=voidQueuedOrder&receipt_number=${order.receipt_number}`, {
+						method: 'DELETE',
+					});
+
+					const data = await response.json();
+					if (data.success) {
+						console.log(`Successfully voided order: ${order.receipt_number}`);
+						window.location.reload(); // Reload the window after successful void
+					} else {
+						console.error(`Failed to void order: ${data.message}`);
+					}
+				} catch (error) {
+					console.error('Error voiding order:', error);
+				}
+			}
+			// Optionally, refresh the queued orders after voiding
+			await fetchQueuedOrders();
+		} else {
+			console.log('No orders to void.');
+		}
+	}
 </script>
 
 <div class="flex h-screen">
@@ -1916,12 +1942,18 @@
             </div>
             
             <!-- Modal Footer -->
-            <div class="bg-gray-100 px-6 py-4 border-t">
+            <div class="bg-gray-100 px-6 py-4 border-t flex justify-between space-x-2">
                 <button 
-                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded focus:outline-none focus:shadow-outline"
+                    class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded focus:outline-none focus:shadow-outline transition duration-200"
                     on:click={closeTableDetailsModal}
                 >
                     Close
+                </button>
+                <button 
+                    class="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded focus:outline-none focus:shadow-outline transition duration-200"
+                    on:click={voidQueuedOrders}
+                >
+                    Void Que Orders
                 </button>
             </div>
         </div>

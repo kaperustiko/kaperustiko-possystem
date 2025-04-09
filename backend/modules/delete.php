@@ -78,6 +78,22 @@ switch ($requestMethod) {
                         echo json_encode(["success" => false, "message" => "No table number provided"]);
                     }
                     break;
+
+                case 'voidQueuedOrder':
+                    $receipt_number = $_GET['receipt_number'] ?? null;
+                    if ($receipt_number) {
+                        $stmt = $conn->prepare("DELETE FROM que_orders WHERE receipt_number = ?");
+                        $stmt->bind_param("s", $receipt_number);
+                        if ($stmt->execute()) {
+                            echo json_encode(["success" => true, "message" => "Queued order voided successfully."]);
+                        } else {
+                            echo json_encode(["success" => false, "message" => $stmt->error]);
+                        }
+                        $stmt->close();
+                    } else {
+                        echo json_encode(["success" => false, "message" => "No receipt number provided"]);
+                    }
+                    break;
             }
         } else {
             echo json_encode(["status" => "error", "message" => "No action specified"]);
