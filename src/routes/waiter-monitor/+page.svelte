@@ -26,6 +26,10 @@
 	let reservedTables: string[] = [];
 
 	let selectedTableNumber: string = ''; // Declare the variable
+	
+	let isWaiterCodePopupVisible = false; // Add this for waiter code popup
+	let waiterCode = ''; // Variable to store waiter code
+	let waiterName = ''; // Variable to store waiter name
 
 	async function fetchCashierName() {
 		// Retrieve staff_token from local storage only if not already fetched
@@ -158,9 +162,6 @@
 			)
 		: '';
 	let selectedSize = 'Regular';
-	let isCodePopupVisible = false;
-	let voidIndex: number | null = null;
-	let inputCode = '';
 
 	// Sort cardData by label1 and label2
 	cardData.sort((a, b) => {
@@ -212,6 +213,22 @@
 			return; // Exit the function
 		}
 		
+		// Show waiter code popup instead of directly saving order
+		isWaiterCodePopupVisible = true;
+	}
+
+	function verifyWaiterCode() {
+		if (waiterCode.length < 4) {
+			showAlert('Please enter a valid waiter code (min 4 digits)', 'error');
+			return;
+		}
+
+		// Store the waiter code for later use
+		waiterName = `Waiter-${waiterCode}`;
+		
+		// Hide the waiter code popup
+		isWaiterCodePopupVisible = false;
+		
 		// Fetch cashier name when place order is clicked
 		fetchCashierName(); // Call to fetch cashier name
 		// Log the codes of all ordered items
@@ -224,6 +241,24 @@
 		saveQueOrder();
 	}
 
+	function closeWaiterCodePopup() {
+		isWaiterCodePopupVisible = false;
+		waiterCode = '';
+	}
+
+	function handleWaiterCodeInput(num: string) {
+		if (waiterCode.length < 6) {
+			waiterCode += num;
+		}
+	}
+	
+	function handleWaiterCodeBackspace() {
+		waiterCode = waiterCode.slice(0, -1);
+	}
+	
+	function handleWaiterCodeClear() {
+		waiterCode = '';
+	}
 
 	function saveQueOrder() {
 		// Prepare the receipt data
@@ -232,6 +267,8 @@
 			date: new Date().toLocaleDateString(),
 			time: new Date().toLocaleTimeString(),
 			cashierName: cashierName,
+			waiterName: waiterName, // Add waiter name to receipt data
+			waiterCode: waiterCode, // Add waiter code to receipt data
 			table_number: selectedTableNumber, // Use the selected table number
 			itemsOrdered: orderedItems.map((item) => ({
 				order_name: item.order_name,
@@ -349,8 +386,9 @@
 		orderedItems = [];
 		selectedSize = 'Regular';
 		selectedAddons = [];
-		voidIndex = null;
-		inputCode = '123456';
+		waiterCode = ''; // Reset waiter code
+		waiterName = ''; // Reset waiter name
+		quantity = 1; // Reset quantity to 1
 
 		// Reset all numbers in local storage, except for staff_token
 		const staffToken = localStorage.getItem('staff_token'); // Preserve staff_token
@@ -568,44 +606,24 @@
 	}
 
 	function voidOrder(index: number) {
-		voidIndex = index;
-		isCodePopupVisible = true;
-	}
+		const orderToVoid = orderedItems[index]; // Get the order to void
+		orderedItems.splice(index, 1); // Remove from local array
+		localStorage.setItem('orderedItems', JSON.stringify(orderedItems)); // Update localStorage after voiding
 
-	function confirmVoid() {
-		if (inputCode.length === 6) {
-			const orderToVoid = orderedItems[voidIndex!]; // Get the order to void
-			orderedItems.splice(voidIndex!, 1); // Remove from local array
-			localStorage.setItem('orderedItems', JSON.stringify(orderedItems)); // Update localStorage after voiding
-
-			// Send request to backend to delete the order
-			fetch(
-				`http://localhost/kaperustiko-possystem/backend/modules/delete.php?action=voidOrder&order_name=${encodeURIComponent(orderToVoid.order_name)}`,
-				{
-					method: 'DELETE'
-				}
-			)
-				.then((response) => response.json())
-				.then((data) => {
-					console.log('Order voided:', data);
-				})
-				.catch((error) => {
-					console.error('Error voiding order:', error);
-				});
-
-			voidIndex = null;
-			inputCode = '';
-			isCodePopupVisible = false;
-		} else {
-			alert('Please enter a valid 6-digit code.');
-		}
-
-		// window.location.reload(); // Removed the refresh call
-	}
-
-	function closeCodePopup() {
-		isCodePopupVisible = false;
-		inputCode = '';
+		// Send request to backend to delete the order
+		fetch(
+			`http://localhost/kaperustiko-possystem/backend/modules/delete.php?action=voidOrder&order_name=${encodeURIComponent(orderToVoid.order_name)}`,
+			{
+				method: 'DELETE'
+			}
+		)
+			.then((response) => response.json())
+			.then((data) => {
+				console.log('Order voided:', data);
+			})
+			.catch((error) => {
+				console.error('Error voiding order:', error);
+			});
 	}
 
 	function handleBackspace() {
@@ -627,6 +645,8 @@
 		total_amount: number;
 		amount_paid: number;
 		order_status: string;
+		waiterName?: string; // Add waiter name (optional)
+		waiterCode?: string; // Add waiter code (optional)
 	};
 
 	// Use the defined type for queuedOrders
@@ -740,8 +760,7 @@
 					<option value="">Select Table Number</option>
 					{#each Array(21) as _, index}
 						<option value={index + 1} 
-							class={queuedOrders.some(order => order.table_number === (index + 1).toString()) ? 'bg-red-500 text-white' : reservedTables.includes((index + 1).toString()) ? 'bg-orange-950 text-white'  : ''} 
-							disabled={tableStatus[index + 1]}>
+							class={queuedOrders.some(order => order.table_number === (index + 1).toString()) ? 'bg-red-500 text-white' : reservedTables.includes((index + 1).toString()) ? 'bg-orange-950 text-white'  : ''}>
 							Table {index + 1}
 						</option>
 					{/each}
@@ -909,6 +928,12 @@
 									{order.order_status}
 								</span>
 							</div>
+							{#if order.waiterName}
+							<div class="flex items-center justify-between mt-2">
+								<p class="text-gray-600">Served by:</p>
+								<span class="font-semibold text-blue-600">{order.waiterName}</span>
+							</div>
+							{/if}
 						</div>
 						{/each}
 					{:else}
@@ -1058,22 +1083,48 @@
 	</div>
 {/if}
 
-{#if isCodePopupVisible}
+{#if isWaiterCodePopupVisible}
 	<div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70">
 		<div class="w-full max-w-md rounded-lg bg-white p-8 shadow-lg">
-			<h2 class="mb-4 text-center text-2xl font-bold">Input 6-Digit Code</h2>
+			<h2 class="mb-4 text-center text-2xl font-bold">Enter Waiter Code</h2>
+			<p class="mb-4 text-center text-gray-600">Please enter your waiter code to process this order</p>
 			<input
 				type="text"
-				bind:value={inputCode}
+				bind:value={waiterCode}
 				maxlength="6"
-				class="w-full rounded border border-gray-300 p-2 text-center"
-				placeholder="Enter 6-digit code"
+				class="w-full rounded border border-gray-300 p-2 text-center text-2xl"
+				placeholder="Enter waiter code"
+				readonly
 			/>
+			
+			<!-- Numeric Keypad -->
+			<div class="mt-4 grid grid-cols-3 gap-2">
+				{#each [1, 2, 3, 4, 5, 6, 7, 8, 9, 'Clear', 0, '⌫'] as key}
+					<button
+						on:click={() => {
+							if (key === 'Clear') {
+								handleWaiterCodeClear();
+							} else if (key === '⌫') {
+								handleWaiterCodeBackspace();
+							} else {
+								handleWaiterCodeInput(key.toString());
+							}
+						}}
+						class="rounded-md p-3 text-lg font-bold 
+							{key === 'Clear' ? 'bg-yellow-500 text-white' : 
+							key === '⌫' ? 'bg-red-500 text-white' : 
+							'bg-gray-200 hover:bg-gray-300'}"
+					>
+						{key}
+					</button>
+				{/each}
+			</div>
+			
 			<div class="mt-4 flex justify-between">
-				<button on:click={closeCodePopup} class="rounded-md bg-red-500 px-4 py-2 text-white"
+				<button on:click={closeWaiterCodePopup} class="rounded-md bg-red-500 px-4 py-2 text-white"
 					>Cancel</button
 				>
-				<button on:click={confirmVoid} class="rounded-md bg-blue-500 px-4 py-2 text-white"
+				<button on:click={verifyWaiterCode} class="rounded-md bg-blue-500 px-4 py-2 text-white"
 					>Confirm</button
 				>
 			</div>
