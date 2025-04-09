@@ -1,4 +1,3 @@
-
 <?php
 include '../config/connection.php';
 
@@ -23,8 +22,8 @@ if ($requestMethod === 'POST') {
         $cashierName = $data['cashierName'];
         $itemsOrderedJson = json_encode($data['itemsOrdered']); // Encode modified itemsOrdered
         $totalAmount = $data['totalAmount'];
-        $amountPaid = isset($data['amountPaid']) ? $data['amountPaid'] : 0; // Default to 0 if not set
-        $change = isset($data['change']) ? $data['change'] : 0; // Default to 0 if not set
+        $amountPaid = isset($data['amountPaid']) ? $data['amountPaid'] : null; // Allow null if not set
+        $change = isset($data['change']) ? $data['change'] : null; // Allow null if not set
         $orderTake = $data['order_take'];
         $tableNumber = $data['table_number']; // New variable for table number
         $orderStatus = "pending"; // Default order status

@@ -7,7 +7,7 @@
 	import { currentInputStore } from '../../stores/currentInputStore'; // Import the store
 
 	let cardData: MenuItem[] = [];
-	let amountPaid = '₱0.00';
+	let amountPaid = '₱0.00'; // Default amount paid
 	let isDineIn = false;
 	let isTakeOut = false;
 	let cashierName = '';
@@ -28,8 +28,10 @@
 	let selectedTableNumber: string = ''; // Declare the variable
 	
 	let isWaiterCodePopupVisible = false; // Add this for waiter code popup
-	let waiterCode = ''; // Variable to store waiter code
+	let waiterCode = '123456'; // Variable to store waiter code
 	let waiterName = ''; // Variable to store waiter name
+
+	let change = 0; // Set default change to 0
 
 	async function fetchCashierName() {
 		// Retrieve staff_token from local storage only if not already fetched
@@ -187,6 +189,7 @@
 		basePrice: number;
 		code: string;
 		special_instructions?: string; // Add special instructions field
+		que_order_no?: string; // Add que_order_no field
 	};
 
 	let selectedAddons: string[] = [];
@@ -259,40 +262,24 @@
 			return;
 		}
 
-		// Send the waiter code to the server for verification
-		fetch('http://localhost/kaperustiko-possystem/backend/modules/auth.php', {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/x-www-form-urlencoded',
-			},
-			body: new URLSearchParams({
-				'action': 'verifyWaiterCode',
-				'waiter_code': waiterCode
-			})
-		})
-		.then(response => response.json())
-		.then(data => {
-			if (data.status === 'success') {
-				// Waiter code is valid
-				console.log('Waiter verification successful:', data);
-				
-				// Store the waiter name from the database response
-				waiterName = data.waiterName;
-				
-				// Hide the waiter code popup
-				isWaiterCodePopupVisible = false;
-				
-				// Continue with saving the order
-				saveQueOrder();
-			} else {
-				// Waiter code is invalid
-				showAlert('Invalid waiter code. Please try again.', 'error');
-			}
-		})
-		.catch(error => {
-			console.error('Error verifying waiter code:', error);
-			showAlert('Error verifying waiter code. Please try again.', 'error');
-		});
+		// Check against the hardcoded waiter code
+		if (waiterCode === '123456') {
+			// Waiter code is valid
+			console.log('Waiter verification successful: Waiter code is valid');
+			
+			// Store the waiter name from the hardcoded value
+			waiterName = 'John Doe'; // Example waiter name
+			
+			// Hide the waiter code popup
+			isWaiterCodePopupVisible = false;
+			
+			// Proceed to save the order immediately after verification
+			saveQueOrder(); // Call saveQueOrder if verification is successful
+			return; // Ensure no further code runs after this point
+		} else {
+			// Waiter code is invalid
+			showAlert('Invalid waiter code. Please try again.', 'error');
+		}
 	}
 
 	function closeWaiterCodePopup() {
@@ -319,6 +306,7 @@
 		fetch('http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getTotalQueOrders')
 			.then((response) => {
 				if (!response.ok) {
+					console.error('Failed to fetch queue order number:', response.statusText);
 					return response.text().then(text => {
 						throw new Error('Failed to fetch queue order number: ' + text);
 					});
@@ -331,7 +319,6 @@
 				
 				// Check if total_order exists in the response
 				if (!queueData || typeof queueData.total_order === 'undefined') {
-					// Use timestamp as fallback if total_order is missing
 					const timestamp = new Date().getTime().toString().slice(-6);
 					return processOrder(parseInt(timestamp));
 				}
@@ -342,12 +329,10 @@
 			.catch((error) => {
 				console.error('Error fetching total que orders:', error);
 				showAlert('Failed to fetch queue order number. Using timestamp instead.', 'error');
-				
-				// Fallback to using timestamp as order number if fetch fails
 				const timestamp = new Date().getTime().toString().slice(-6);
 				processOrder(parseInt(timestamp));
 			});
-			
+		
 		// Function to process the order with the given receipt number
 		function processOrder(receiptNum: number) {
 			// Prepare the receipt data
@@ -380,24 +365,15 @@
 						0
 					)
 				),
-				amountPaid: payment ? Math.round(parseFloat(payment.replace('₱', '').replace(',', ''))) : 0,
-				change:
-					orderedItems.length > 0 && payment
-						? Math.round(
-								parseFloat(payment.replace('₱', '').replace(',', '')) -
-									orderedItems.reduce(
-										(total, item) =>
-											total +
-											parseFloat(item.order_price.toString().replace('₱', '').replace(',', '')),
-										0
-									)
-							)
-							: 0,
+				amountPaid: 0, // Set to 0 if payment is not provided
+				change: orderedItems.length > 0 && payment ? Math.round(parseFloat(payment.replace('₱', '').replace(',', '')) - orderedItems.reduce((total, item) => total + parseFloat(item.order_price.toString().replace('₱', '').replace(',', '')), 0)) : 0, // Set to 0 if no orders or payment
 				order_take: isDineIn ? 'Dine In' : 'Take Out', // Ensure this key matches
 				saveQueOrder: true // Add this line to indicate saving to que_orders
 			};
 
+			// Log the receipt data before sending
 			console.log('Sending order data with waiter:', waiterName, waiterCode);
+			console.log('Receipt Data:', JSON.stringify(receiptData, null, 2)); // Log the data being sent
 
 			// Send data to the server
 			fetch('http://localhost/kaperustiko-possystem/backend/modules/save_que_order.php', {
@@ -407,73 +383,73 @@
 				},
 				body: JSON.stringify(receiptData)
 			})
-				.then((response) => {
-					if (!response.ok) {
-						return response.text().then(text => {
-							throw new Error('Server response not OK: ' + text);
-						});
-					}
-					return response.json();
-				})
-				.then((data) => {
-					if (data.error) {
-						console.error('Error saving order:', data.error);
-						showAlert(data.error, 'error');
-						return;
-					}
-					
-					console.log('Order saved:', data);
-					showAlert('Order queued successfully!', 'success');
-					
-					// After successful order, update table status
-					fetchTableStatus();
-					
-					// Call updateQuantity for each ordered item
-					orderedItems.forEach((item) => {
-						const code = item.code;
-						console.log('Updating inventory for:', code);
-						fetch(`http://localhost/kaperustiko-possystem/backend/modules/qty_data.php?code=${code}&order_quantity=${item.order_quantity}`, {
-							method: 'GET'
-						})
-							.then((response) => response.json())
-							.then((data) => {
-								if (data.status === 'success') {
-									console.log('Inventory updated:', data.message);
-								} else {
-									console.error('Inventory update error:', data.message);
-								}
-							})
-							.catch((error) => {
-								console.error('Error updating quantity:', error);
-							});
+			.then((response) => {
+				if (!response.ok) {
+					return response.text().then(text => {
+						throw new Error('Server response not OK: ' + text);
 					});
-					
-					// Now delete all orders from the orders table
-					fetch('http://localhost/kaperustiko-possystem/backend/modules/delete.php?action=deleteAllOrders', {
-						method: 'DELETE'
+				}
+				return response.json();
+			})
+			.then((data) => {
+				if (data.error) {
+					console.error('Error saving order:', data.error);
+					showAlert(data.error, 'error');
+					return;
+				}
+				
+				console.log('Order saved:', data);
+				showAlert('Order queued successfully!', 'success');
+				
+				// After successful order, update table status
+				fetchTableStatus();
+				
+				// Call updateQuantity for each ordered item
+				orderedItems.forEach((item) => {
+					const code = item.code;
+					console.log('Updating inventory for:', code);
+					fetch(`http://localhost/kaperustiko-possystem/backend/modules/qty_data.php?code=${code}&order_quantity=${item.order_quantity}`, {
+						method: 'GET'
 					})
-						.then(response => response.json())
-						.then(data => {
-							console.log('Orders cleared:', data);
+						.then((response) => response.json())
+						.then((data) => {
+							if (data.status === 'success') {
+								console.log('Inventory updated:', data.message);
+							} else {
+								console.error('Inventory update error:', data.message);
+							}
 						})
-						.catch(error => {
-							console.error('Error clearing orders:', error);
+						.catch((error) => {
+							console.error('Error updating quantity:', error);
 						});
-					
-					// Clear ordered items
-					orderedItems = [];
-					// Reset waiter code
-					waiterCode = '';
-					waiterName = '';
-					// Reset table number selection
-					selectedTableNumber = '';
-					// Reset payment
-					payment = '';
-				})
-				.catch((error) => {
-					console.error('Error:', error);
-					showAlert('Failed to queue order. Please try again.', 'error');
 				});
+				
+				// Now delete all orders from the orders table
+				fetch('http://localhost/kaperustiko-possystem/backend/modules/delete.php?action=deleteAllOrders', {
+					method: 'DELETE'
+				})
+					.then(response => response.json())
+					.then(data => {
+						console.log('Orders cleared:', data);
+					})
+					.catch(error => {
+						console.error('Error clearing orders:', error);
+					});
+				
+				// Clear ordered items
+				orderedItems = [];
+				// Reset waiter code
+				waiterCode = '';
+				waiterName = '';
+				// Reset table number selection
+				selectedTableNumber = '';
+				// Reset payment
+				payment = '';
+			})
+			.catch((error) => {
+				console.error('Error:', error);
+				showAlert('Failed to queue order. Please try again.', 'error');
+			});
 		}
 	}
 
@@ -807,48 +783,24 @@
 	}
 
 	function voidOrder(index: number) {
-		const orderToVoid = orderedItems[index];
-		
-		// Create a unique identifier with all relevant details
-		const orderIdentifier = {
-			order_name: orderToVoid.order_name,
-			order_size: orderToVoid.order_size,
-			order_addons: orderToVoid.order_addons,
-			order_addons2: orderToVoid.order_addons2,
-			order_addons3: orderToVoid.order_addons3,
-			code: orderToVoid.code,
-			special_instructions: orderToVoid.special_instructions,
-			index: index  // Include index for tracking
-		};
-		
-		// First update the local state for immediate UI feedback
-		const updatedItems = [...orderedItems];
-		updatedItems.splice(index, 1);
-		orderedItems = updatedItems;
-		localStorage.setItem('orderedItems', JSON.stringify(orderedItems));
+		const orderToVoid = orderedItems[index]; // Get the order to void
+		orderedItems.splice(index, 1); // Remove from local array
+		localStorage.setItem('orderedItems', JSON.stringify(orderedItems)); // Update localStorage after voiding
 
-		// Then send request to backend with detailed information in both URL and body
+		// Send request to backend to delete the order - include both code and size to identify the specific item
 		fetch(
 			`http://localhost/kaperustiko-possystem/backend/modules/delete.php?action=voidOrder&order_name=${encodeURIComponent(orderToVoid.order_name)}&order_size=${encodeURIComponent(orderToVoid.order_size)}&index=${index}`,
 			{
-				method: 'DELETE',
-				headers: {
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify(orderIdentifier)
+				method: 'DELETE'
 			}
 		)
-		.then((response) => response.json())
-		.then((data) => {
-			console.log('Order voided:', data);
-			// Refresh orders in case there was a partial update
-			fetchOrders();
-		})
-		.catch((error) => {
-			console.error('Error voiding order:', error);
-			// On error, restore the item or refresh all orders
-			fetchOrders();
-		});
+			.then((response) => response.json())
+			.then((data) => {
+				console.log('Order voided:', data);
+			})
+			.catch((error) => {
+				console.error('Error voiding order:', error);
+			});
 	}
 
 	function handleBackspace() {
