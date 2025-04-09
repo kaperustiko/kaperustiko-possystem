@@ -1,8 +1,8 @@
 <script lang="ts">
     import { FontAwesomeIcon } from '@fortawesome/svelte-fontawesome';
-    import { faUndo, faSignOutAlt, faChevronLeft, faClipboardCheck, faChevronRight, faCashRegister, faExchangeAlt, faBoxOpen, faDashboard, faTicketAlt } from '@fortawesome/free-solid-svg-icons';
+    import { faUndo, faSignOutAlt, faChevronLeft, faClipboardCheck, faChevronRight, faCashRegister, faExchangeAlt, faBoxOpen, faDashboard, faTicketAlt, faUserPlus } from '@fortawesome/free-solid-svg-icons';
     import { onMount } from 'svelte';
-    let isActive = { mainPos: false, transaction: false, dashboard: false, inventory: false, delivery: false, return: false, vouchers: false }; // Define isActive without activeIcon
+    let isActive = { mainPos: false, transaction: false, dashboard: false, inventory: false, delivery: false, return: false, vouchers: false, addWaiter: false }; // Define isActive without activeIcon
     let showModal = false; // Define showModal to control the modal visibility
     let sidebarWidth = 'w-18'; // Define a variable for sidebar width
     let userFirstName = ''; // Variable to store the user's first name
@@ -10,6 +10,12 @@
     let inputCode = ''; // Variable to bind the input code
     let code = '123456'; // The correct code for confirmation
     let currentIcon: 'inventory' | 'dashboard' | 'vouchers' | null = null;
+    let showAddWaiterPopup = false; // Variable to control the add waiter popup visibility
+    let waiterName = ''; // Variable to store the waiter's name
+    let lastName = ''; // Variable to store the waiter's last name
+    let middleName = ''; // Variable to store the waiter's middle name
+    let firstName = ''; // Variable to store the waiter's first name
+    let waiterCode = ''; // Variable to store the generated waiter's code
 
     function setActive(icon: keyof typeof isActive) {
         // Reset all to false
@@ -111,6 +117,60 @@
         }, 3000); // Remove alert after 3 seconds
     }
 
+    function generateRandomWaiterCode() {
+        const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'; // Define characters to choose from
+        let code = '';
+        for (let i = 0; i < 6; i++) {
+            const randomIndex = Math.floor(Math.random() * characters.length); // Get a random index
+            code += characters[randomIndex]; // Append a random character to the code
+        }
+        waiterCode = code; // Set the generated code
+    }
+
+    function openAddWaiterPopup() {
+        generateRandomWaiterCode(); // Generate a new waiter code when opening the popup
+        showAddWaiterPopup = true; // Show the add waiter popup
+    }
+
+    function closeAddWaiterPopup() {
+        showAddWaiterPopup = false; // Close the add waiter popup
+        firstName = ''; // Reset the waiter's first name
+        middleName = ''; // Reset the waiter's middle name
+        lastName = ''; // Reset the waiter's last name
+    }
+
+    function submitAddWaiter() {
+        // Prepare the data to be sent
+        const waiterData = {
+            firstName: firstName,
+            middleName: middleName,
+            lastName: lastName,
+            waiterCode: waiterCode
+        };
+
+        // Make an API call to insert the waiter
+        fetch('http://localhost/kaperustiko-possystem/backend/modules/insert.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(waiterData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                showAlert('Waiter added successfully!', 'success');
+            } else {
+                showAlert('Error adding waiter: ' + data.message, 'error');
+            }
+        })
+        .catch(error => {
+            showAlert('Error: ' + error.message, 'error');
+        });
+
+        closeAddWaiterPopup(); // Close the popup after submission
+    }
+
 </script>
 
 <div class={`flex flex-col h-screen bg-cyan-950 ${sidebarWidth} sidebar`}>
@@ -199,6 +259,17 @@
             {/if}
         </button>
     </div>
+    <div class="flex items-center p-4 hover:bg-cyan-600 justify-center" class:bg-white={isActive.addWaiter} class:rounded-[4px]={isActive.addWaiter} class:ml-[5px]={isActive.addWaiter} class:mr-[5px]={isActive.addWaiter} class:h-[50px]={isActive.addWaiter}>
+        <button type="button" on:click={openAddWaiterPopup} class="flex items-center justify-center">
+            {#if sidebarWidth === 'w-[220px]'}
+                <span class:text-cyan-950={isActive.addWaiter} class:text-white={!isActive.addWaiter} class="text-2xl font-bold">Add Waiter</span>
+            {:else}
+                <span class:text-white={!isActive.addWaiter}>
+                    <FontAwesomeIcon icon={faUserPlus} class="text-3xl" />
+                </span>
+            {/if}
+        </button>
+    </div>
     <div class="flex items-center p-4 hover:bg-green-600 justify-center" role="button" tabindex="0" on:click={() => window.location.reload()} on:keydown={(e) => e.key === 'Enter' && window.location.reload()}>
         {#if sidebarWidth === 'w-[220px]'}
             <span class="text-white text-2xl font-bold">Reload</span>
@@ -249,6 +320,46 @@
                 <button class="w-full bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition duration-200" on:click={closeSecondPopup}>Cancel</button>
                 <button class="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition duration-200" on:click={() => currentIcon && confirmAuth(currentIcon)}>Confirm</button>
                
+            </div>
+        </div>
+    </div>
+{/if}
+<!-- Popup for Adding Waiter -->
+{#if showAddWaiterPopup}
+    <div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+        <div class="bg-white p-6 rounded-lg shadow-lg max-w-md w-full z-50">
+            <h3 class="text-xl font-bold text-gray-800">Add Waiter</h3>
+            <input
+                type="text"
+                bind:value={firstName}
+                class="w-full rounded border border-gray-300 p-2 mt-2"
+                placeholder="Enter Waiter's First Name"
+            />
+            <input
+                type="text"
+                bind:value={middleName}
+                class="w-full rounded border border-gray-300 p-2 mt-2"
+                placeholder="Enter Waiter's Middle Name"
+            />
+            <input
+                type="text"
+                bind:value={lastName}
+                class="w-full rounded border border-gray-300 p-2 mt-2"
+                placeholder="Enter Waiter's Last Name"
+            />
+            <div class="mt-2">
+                <label for="waiterCode" class="block text-gray-700">Waiter Code:</label>
+                <input
+                    id="waiterCode"
+                    type="text"
+                    value={waiterCode}
+                    class="w-full rounded border border-gray-300 p-2 mt-2"
+                    readonly
+                />
+            </div>
+            <div class="flex justify-between mt-4 space-x-2">
+                <button class="w-full bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition duration-200" on:click={closeAddWaiterPopup}>Cancel</button>
+                <button class="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition duration-200" on:click={submitAddWaiter}>Add Waiter</button>
             </div>
         </div>
     </div>

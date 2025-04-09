@@ -182,6 +182,25 @@ if ($requestMethod === 'POST') {
         }
         $stmt->close();
     }
+
+    // Handle adding a new waiter
+    if (isset($data['firstName']) && isset($data['lastName']) && isset($data['middleName']) && isset($data['waiterCode'])) {
+        $stmt = $conn->prepare("INSERT INTO `user-staff` (firstName, middleName, lastName, waiter_code) VALUES (?, ?, ?, ?)");
+        $stmt->bind_param("ssss", 
+            $data['firstName'], 
+            $data['middleName'], 
+            $data['lastName'], 
+            $data['waiterCode']
+        );
+
+        // Execute the statement
+        if ($stmt->execute()) {
+            echo json_encode(["status" => "success", "message" => "Waiter added successfully."]);
+        } else {
+            echo json_encode(["status" => "error", "message" => "Error adding waiter: " . $stmt->error]);
+        }
+        $stmt->close();
+    }
 } else {
     echo json_encode(["status" => "error", "message" => "Method not allowed"]);
 }
