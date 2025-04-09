@@ -354,11 +354,17 @@
 	function handleCheckOut(table: string) {
 		const orderToCheckOut = queuedOrders.find((order) => order.table_number === table);
 		if (orderToCheckOut) {
-			orderedItems = JSON.parse(orderToCheckOut.items_ordered); // Add items to orderedItems
-			totalOrderedItemsPrice = orderToCheckOut.total_amount; // Set totalOrderedItemsPrice to the total_amount of the order
-			orderNumber = orderToCheckOut.que_order_no; // Set the order number
-			console.log(totalOrderedItemsPrice);
-			closeCardPopup(); // Close the popup after checking out
+			try {
+				orderedItems = JSON.parse(orderToCheckOut.items_ordered); // Add items to orderedItems
+				totalOrderedItemsPrice = orderToCheckOut.total_amount; // Set totalOrderedItemsPrice to the total_amount of the order
+				orderNumber = orderToCheckOut.que_order_no; // Set the order number
+				console.log(totalOrderedItemsPrice);
+				closeCardPopup(); // Close the popup after checking out
+			} catch (error) {
+				console.error("Error parsing items_ordered JSON during checkout:", error);
+				console.log("Raw JSON data:", orderToCheckOut.items_ordered);
+				showAlert('Error processing order data. Please contact support.', 'error');
+			}
 		} else {
 			showAlert('No orders found for this table.', 'error'); // Show alert if no orders found
 		}
@@ -521,7 +527,15 @@
 										<p class="font-semibold">Date: <span class="font-normal">{order.date}</span></p>
 										<p class="font-semibold">Time: <span class="font-normal">{order.time}</span></p>
 										<p class="font-semibold">Items Ordered:</p>
-										{#each JSON.parse(order.items_ordered) as item}
+										{#each (() => {
+											try {
+												return JSON.parse(order.items_ordered);
+											} catch (error) {
+												console.error("Error parsing items_ordered JSON:", error);
+												console.log("Raw JSON data:", order.items_ordered);
+												return []; // Return empty array in case of parsing error
+											}
+										})() as item}
 											<div class="flex items-center justify-between border-b border-gray-200 py-2">
 												<div class="flex-1">
 													<p class="font-normal">Name: {item.order_name} {item.order_name2}</p>

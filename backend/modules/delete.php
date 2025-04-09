@@ -133,22 +133,24 @@ function delete_all_orders($conn) {
 
 function void_order($conn) {
     $orderName = $_GET['order_name'] ?? null;
+    $orderSize = $_GET['order_size'] ?? null;
+    $index = $_GET['index'] ?? null;
 
-    if ($orderName) {
-        // Prepare and bind
-        $stmt = $conn->prepare("DELETE FROM orders WHERE order_name = ?");
-        $stmt->bind_param("s", $orderName);
+    if ($orderName && $orderSize) {
+        // Prepare and bind - now adding order_size to the condition
+        $stmt = $conn->prepare("DELETE FROM orders WHERE order_name = ? AND order_size = ? LIMIT 1");
+        $stmt->bind_param("ss", $orderName, $orderSize);
 
         // Execute the statement
         if ($stmt->execute()) {
-            echo json_encode(["message" => "Order voided successfully."]);
+            echo json_encode(["message" => "Order voided successfully.", "index" => $index]);
         } else {
             echo json_encode(["message" => "Error voiding order: " . $stmt->error]);
         }
 
         $stmt->close();
     } else {
-        echo json_encode(["message" => "No order name provided."]);
+        echo json_encode(["message" => "Missing order details (name or size)."]);
     }
 }
 

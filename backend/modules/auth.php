@@ -87,6 +87,28 @@ try {
             }
 
             $stmt->close();
+        } elseif ($action === 'verifyWaiterCode') {
+            // Get waiter_code from POST request
+            $waiter_code = $_POST['waiter_code'];
+            
+            // Prepare and bind for waiter code verification
+            $stmt = $conn->prepare("SELECT firstName, lastName FROM `user-staff` WHERE waiter_code = ?");
+            $stmt->bind_param("s", $waiter_code);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            if ($result->num_rows > 0) {
+                $row = $result->fetch_assoc();
+                $waiterName = $row['firstName'] . ' ' . $row['lastName'];
+                echo json_encode([
+                    "status" => "success", 
+                    "message" => "Waiter code verified successfully!",
+                    "waiterName" => $waiterName
+                ]);
+            } else {
+                echo json_encode(["status" => "error", "message" => "Invalid waiter code."]);
+            }
+            
+            $stmt->close();
         }
     } else {
         echo json_encode(["status" => "error", "message" => "Action not specified. Please provide 'action' in your request."]); // More informative error message

@@ -118,14 +118,33 @@ function getOrders($conn)
 // Function to get orders
 function getQueOrders($conn)
 {
-    $sql = "SELECT * FROM que_orders";
+    error_log("Fetching all queued orders");
+    $sql = "SELECT * FROM que_orders ORDER BY receipt_number DESC";
     $result = $conn->query($sql);
+    
+    if (!$result) {
+        error_log("Query error in getQueOrders: " . $conn->error);
+        echo json_encode(["error" => "Database query error"]);
+        return;
+    }
+    
     $orders = [];
+    $count = 0;
+    
     if ($result->num_rows > 0) {
         while ($row = $result->fetch_assoc()) {
+            $count++;
+            // Add table_number if missing
+            if (!isset($row['table_number']) || empty($row['table_number'])) {
+                $row['table_number'] = '';
+            }
+            // Log each order for debugging
+            error_log("Found order: Receipt #" . $row['receipt_number'] . " for table " . $row['table_number']);
             $orders[] = $row;
         }
     }
+    
+    error_log("Returning " . $count . " total orders");
     echo json_encode($orders);
 }
 
@@ -493,6 +512,192 @@ function getMonthlySales($conn) {
     echo json_encode($monthlySales);
 }
 
+// Function to get table order details
+function getTableOrderDetails($conn)
+{
+    // Check if table_number parameter is provided
+    if (isset($_GET['table_number'])) {
+        $table_number = $_GET['table_number'];
+        
+        error_log("Fetching order details for table: $table_number");
+        
+        // Query to get all orders for this table
+        $sql = "SELECT que_order_no, receipt_number, date, time, items_ordered, total_amount, 
+                amount_paid, amount_change, order_take, order_status, waiter_name, waiter_code, table_number 
+                FROM que_orders 
+                WHERE table_number = ? 
+                ORDER BY receipt_number ASC";
+        
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("s", $table_number);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
+        $formattedItems = [];
+        $receiptCount = 0;
+        $totalItemCount = 0;
+        
+        if ($result->num_rows == 0) {
+            error_log("No orders found for table: $table_number");
+            header('Content-Type: application/json');
+            echo json_encode([]);
+            return;
+        }
+        
+        error_log("Found " . $result->num_rows . " orders for table: $table_number");
+        
+        while ($row = $result->fetch_assoc()) {
+            $receiptCount++;
+            $receipt = $row['receipt_number'];
+            
+            // Log the order we're processing
+            error_log("Processing order #$receipt for table $table_number with status: " . $row['order_status']);
+            
+            // Decode the JSON items_ordered string to an array
+            $itemsOrderedJson = $row['items_ordered'];
+            error_log("Items ordered JSON for receipt #$receipt: $itemsOrderedJson");
+            
+            $itemsOrdered = json_decode($itemsOrderedJson, true);
+            
+            if (!is_array($itemsOrdered)) {
+                error_log("Failed to decode items_ordered JSON for receipt #$receipt. Error: " . json_last_error_msg());
+                continue; // Skip this order if JSON is invalid
+            }
+            
+            error_log("Successfully decoded " . count($itemsOrdered) . " items for receipt #$receipt");
+            
+            foreach ($itemsOrdered as $itemIndex => $item) {
+                $totalItemCount++;
+                
+                // Format each item with receipt info
+                $formattedItem = [
+                    'receipt_number' => $row['receipt_number'],
+                    'order_status' => $row['order_status'],
+                    'waiter_name' => $row['waiter_name'],
+                    'waiter_code' => $row['waiter_code'],
+                    'date' => $row['date'],
+                    'time' => $row['time'],
+                    'table_number' => $row['table_number'],
+                    'order_name' => isset($item['order_name']) ? $item['order_name'] : '',
+                    'order_size' => isset($item['order_size']) ? $item['order_size'] : '',
+                    'order_quantity' => isset($item['order_quantity']) ? str_replace('x', '', $item['order_quantity']) : 1,
+                    'order_addons' => isset($item['order_addons']) ? $item['order_addons'] : 'None',
+                    'order_addons_price' => isset($item['order_addons_price']) ? $item['order_addons_price'] : 0,
+                    'order_addons2' => isset($item['order_addons2']) ? $item['order_addons2'] : 'None',
+                    'order_addons_price2' => isset($item['order_addons_price2']) ? $item['order_addons_price2'] : 0,
+                    'order_addons3' => isset($item['order_addons3']) ? $item['order_addons3'] : 'None',
+                    'order_addons_price3' => isset($item['order_addons_price3']) ? $item['order_addons_price3'] : 0,
+                    'delivered' => isset($item['delivered']) ? $item['delivered'] : "0"
+                ];
+                
+                // Calculate item total price (base price + addons)
+                $basePrice = isset($item['basePrice']) ? $item['basePrice'] : 0;
+                $quantity = intval(str_replace('x', '', $formattedItem['order_quantity']));
+                $addonsPrice = $formattedItem['order_addons_price'] + $formattedItem['order_addons_price2'] + $formattedItem['order_addons_price3'];
+                $formattedItem['item_total_price'] = ($basePrice + $addonsPrice) * $quantity;
+                
+                $formattedItems[] = $formattedItem;
+            }
+        }
+        
+        error_log("Processed $receiptCount orders with total $totalItemCount items for table: $table_number");
+        
+        header('Content-Type: application/json');
+        echo json_encode($formattedItems);
+    } else {
+        // Return error if table_number is not provided
+        header('Content-Type: application/json');
+        echo json_encode(['error' => 'Table number is required']);
+    }
+}
+
+// Function to get order items by receipt number
+function getOrderItemsByReceipt($conn)
+{
+    // Check if receipt_number parameter is provided
+    if (isset($_GET['receipt_number'])) {
+        $receipt_number = $_GET['receipt_number'];
+        
+        error_log("Fetching order items for receipt: $receipt_number");
+        
+        // Query to get order details for this receipt
+        $sql = "SELECT que_order_no, receipt_number, date, time, items_ordered, total_amount, 
+                amount_paid, amount_change, order_take, order_status, waiter_name, waiter_code, table_number 
+                FROM que_orders 
+                WHERE receipt_number = ? OR que_order_no = ?
+                ORDER BY receipt_number ASC";
+        
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("ss", $receipt_number, $receipt_number);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
+        $formattedItems = [];
+        
+        if ($result->num_rows == 0) {
+            error_log("No order found with receipt number: $receipt_number");
+            header('Content-Type: application/json');
+            echo json_encode([]);
+            return;
+        }
+        
+        while ($row = $result->fetch_assoc()) {
+            // Get the table number for this order
+            $table_number = $row['table_number'];
+            error_log("Found order for receipt $receipt_number at table $table_number");
+            
+            // Decode the JSON items_ordered string to an array
+            $items_ordered_json = $row['items_ordered'];
+            $itemsOrdered = json_decode($items_ordered_json, true);
+            
+            error_log("Items ordered JSON: $items_ordered_json");
+            
+            if (is_array($itemsOrdered)) {
+                error_log("Found " . count($itemsOrdered) . " items in receipt $receipt_number");
+                foreach ($itemsOrdered as $item) {
+                    // Format each item with receipt info
+                    $formattedItem = [
+                        'receipt_number' => $row['receipt_number'],
+                        'order_status' => $row['order_status'],
+                        'waiter_name' => $row['waiter_name'],
+                        'waiter_code' => $row['waiter_code'],
+                        'date' => $row['date'],
+                        'time' => $row['time'],
+                        'table_number' => $table_number,
+                        'order_name' => isset($item['order_name']) ? $item['order_name'] : '',
+                        'order_size' => isset($item['order_size']) ? $item['order_size'] : '',
+                        'order_quantity' => isset($item['order_quantity']) ? str_replace('x', '', $item['order_quantity']) : 1,
+                        'order_addons' => isset($item['order_addons']) ? $item['order_addons'] : 'None',
+                        'order_addons_price' => isset($item['order_addons_price']) ? $item['order_addons_price'] : 0,
+                        'order_addons2' => isset($item['order_addons2']) ? $item['order_addons2'] : 'None',
+                        'order_addons_price2' => isset($item['order_addons_price2']) ? $item['order_addons_price2'] : 0,
+                        'order_addons3' => isset($item['order_addons3']) ? $item['order_addons3'] : 'None',
+                        'order_addons_price3' => isset($item['order_addons_price3']) ? $item['order_addons_price3'] : 0,
+                        'delivered' => isset($item['delivered']) ? $item['delivered'] : "0"
+                    ];
+                    
+                    // Calculate item total price (base price + addons)
+                    $basePrice = isset($item['basePrice']) ? $item['basePrice'] : 0;
+                    $quantity = intval(str_replace('x', '', $formattedItem['order_quantity']));
+                    $addonsPrice = $formattedItem['order_addons_price'] + $formattedItem['order_addons_price2'] + $formattedItem['order_addons_price3'];
+                    $formattedItem['item_total_price'] = ($basePrice + $addonsPrice) * $quantity;
+                    
+                    $formattedItems[] = $formattedItem;
+                }
+            } else {
+                error_log("Invalid items_ordered format for receipt $receipt_number");
+            }
+        }
+        
+        header('Content-Type: application/json');
+        echo json_encode($formattedItems);
+    } else {
+        // Return error if receipt_number is not provided
+        header('Content-Type: application/json');
+        echo json_encode(['error' => 'Receipt number is required']);
+    }
+}
+
 // Route handling based on request type
 $requestMethod = $_SERVER['REQUEST_METHOD'];
 switch ($requestMethod) {
@@ -576,6 +781,12 @@ switch ($requestMethod) {
                     break;
                 case 'getVouchersbyCode':
                     getVouchersbyCode($conn);
+                    break;
+                case 'getTableOrderDetails':
+                    getTableOrderDetails($conn);
+                    break;
+                case 'getOrderItemsByReceipt':
+                    getOrderItemsByReceipt($conn);
                     break;
                 default:
                     echo json_encode(["status" => "error", "message" => "Invalid action"]);
