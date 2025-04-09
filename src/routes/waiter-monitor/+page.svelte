@@ -664,9 +664,9 @@
 
 <div class="flex h-screen">
 	<div class="flex flex-grow overflow-hidden bg-gray-100">
-		<div class="flex flex-col w-[1560] overflow-auto p-4">
+		<div class="flex flex-col w-auto overflow-auto p-4">
 			<div class="mb-4 flex flex-wrap space-x-4">
-				{#each ['All', 'Beverages', 'Food', 'Dessert', 'Coffee', 'Tea', 'Soda', 'Sandwich', 'Pasta', 'Burger', 'Ulam', 'Rice'] as category}
+				{#each ['All', 'Beverages', 'Food', 'Dessert', 'Coffee', 'Tea', 'Soda', 'Pasta', 'Burger', 'Ulam', 'Rice'] as category}
 					<button
 						class="rounded-md px-4 py-2 font-bold text-black transition duration-200"
 						class:bg-cyan-950={selectedCategory === category}
@@ -695,8 +695,6 @@
 					<p>Display Tea Menu</p>
 				{:else if selectedCategory === 'Soda'}
 					<p>Display Soda Menu</p>
-				{:else if selectedCategory === 'Sandwich'}
-					<p>Display Sandwich Menu</p>
 				{:else if selectedCategory === 'Ulam'}
 					<p>Display Ulam Menu</p>
 				{:else if selectedCategory === 'Rice'}
