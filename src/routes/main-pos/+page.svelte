@@ -44,6 +44,7 @@
 		order_status: string;
 		items_ordered: string;
 		total_amount: number;
+		basePrice: number;
 	};
 
 	let totalOrderedItemsPrice = 0; // Variable to hold the total price of ordered items
@@ -61,21 +62,25 @@
 
 	// Function to calculate total price of ordered items
 	function calculateTotalOrderedItemsPrice() {
+		let addonsPrice = 0; // Declare addonsPrice here
 		totalOrderedItemsPrice = orderedItems.reduce((total, item) => {
 			// Calculate total addons price
-			const addonsPrice =
+			addonsPrice +=
 				(item.order_addons_price || 0) +
 				(item.order_addons_price2 || 0) +
 				(item.order_addons_price3 || 0);
 
 			// Calculate total for this item
-			const itemTotal = item.total_amount;
+			const itemTotal = item.basePrice; // Ensure this is a number
 
 			// Return the accumulated total
-			return total + itemTotal;
-		}, 0);
+			return total + itemTotal; // Sum the item total
+		}, 0); // Remove + addonsPrice from here
+
+		totalOrderedItemsPrice += addonsPrice; // Add the total addons price
 
 		// Log the total ordered items price
+		console.log('Total Ordered Items Price:', totalOrderedItemsPrice); // Log the total price
 	}
 
 	// Call this function whenever orderedItems changes
@@ -130,8 +135,9 @@
 		);
 		if (response.ok) {
 			queuedOrders = await response.json(); // Check the response here
-			// Assuming each order has a table_number field
+			// Convert basePrice to number for each order
 			queuedOrders.forEach(order => {
+				order.basePrice = Number(order.basePrice); // Convert basePrice to number
 				console.log('Table Number:', order.table_number); // Log the table number for each order
 			});
 		} else {
@@ -281,7 +287,7 @@
 			amountPaid: parseFloat(payment) || 0,
 			change: Math.max(0, parseFloat((parseFloat(payment) - totalOrderedItemsPrice).toFixed(2))),
 			order_take: isTakeOut ? 'Take Out' : 'Dine In',
-			table_number: selectedTableNumber // Ensure this is set correctly
+			table_number: selectedCard.table // Use selectedCard to get the table number
 		};
 
 		// Log the data to check for issues
@@ -305,10 +311,9 @@
 			} else {
 				showAlert(data.message, 'success');
 				isReceiptPopupVisible = false; // Close the receipt popup
-				window.location.reload(); // Reload the window after success
 
 				// Call the delete API after successful receipt printing
-				return fetch(`http://localhost/kaperustiko-possystem/backend/modules/delete.php?action=deleteTableOccupancy&receipt_number=${receiptData.receiptNumber}`, {
+				return fetch(`http://localhost/kaperustiko-possystem/backend/modules/delete.php?action=deleteTableOccupancy&table_number=${selectedCard.table}`, {
 					method: 'DELETE'
 				});
 			}
@@ -321,6 +326,7 @@
 		.then(deleteData => {
 			if (deleteData && deleteData.success) {
 				console.log('Table data deleted successfully.');
+				window.location.reload(); // Reload the window on success
 			} else {
 				console.error('Failed to delete table data:', deleteData.message);
 			}
@@ -329,7 +335,14 @@
 			console.error('Error:', error);
 			showAlert('Failed to save receipt.', 'error');
 		});
+	}
 
+	function openReceiptPopup() {
+		isReceiptPopupVisible = true;
+	}
+
+	function confirmVoid() {
+		// Implement the
 	}
 
 	let isCardPopupVisible = false;
@@ -346,17 +359,26 @@
 
 	// Function to handle checkout
 	function handleCheckOut(table: string) {
-		const orderToCheckOut = queuedOrders.find((order) => order.table_number === table);
-		if (orderToCheckOut) {
+		const ordersToCheckOut = queuedOrders.filter((order) => order.table_number === table);
+		if (ordersToCheckOut.length > 0) {
 			try {
-				orderedItems = JSON.parse(orderToCheckOut.items_ordered); // Add items to orderedItems
-				totalOrderedItemsPrice = orderToCheckOut.total_amount; // Set totalOrderedItemsPrice to the total_amount of the order
-				orderNumber = orderToCheckOut.que_order_no; // Set the order number
+				// Clear existing ordered items
+				orderedItems = []; 
+				let totalAmount = 0; // Initialize total amount variable
+
+				// Loop through each order and parse items
+				ordersToCheckOut.forEach(order => {
+					const items = JSON.parse(order.items_ordered); // Parse items
+					orderedItems.push(...items); // Add items to orderedItems
+					totalAmount += Number(order.total_amount); // Convert total_amount to number and accumulate
+				});
+
+				totalOrderedItemsPrice = totalAmount; // Set totalOrderedItemsPrice to the total amount of all orders
+				orderNumber = ordersToCheckOut[0].que_order_no; // Set the order number from the first order
 				console.log(totalOrderedItemsPrice);
 				closeCardPopup(); // Close the popup after checking out
 			} catch (error) {
 				console.error("Error parsing items_ordered JSON during checkout:", error);
-				console.log("Raw JSON data:", orderToCheckOut.items_ordered);
 				showAlert('Error processing order data. Please contact support.', 'error');
 			}
 		} else {
@@ -568,6 +590,7 @@
 									<p class="font-semibold">
 										Status: <span class="font-normal">{order.order_status}</span>
 									</p>
+									
 								{/if}
 							{/each}
 						{:else}
@@ -714,6 +737,8 @@
 				</div>
 				
 				<div class="grid grid-cols-2 gap-4">
+				
+					
 					<button
 						on:click={() => {
 							// Place Order functionality
@@ -739,7 +764,7 @@
 								};
 							});
 						}}
-						class="rounded py-3 font-bold text-white bg-cyan-950 hover:bg-blue-700 col-span-2"
+						class="rounded py-3 font-bold text-white bg-blue-600 hover:bg-blue-700 col-span-2"
 					>
 						Checkout Bill
 					</button>
@@ -749,6 +774,28 @@
 	</div>
 </div>
 
+{#if isCodePopupVisible}
+	<div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70">
+		<div class="w-full max-w-md rounded-lg bg-white p-8 shadow-lg">
+			<h2 class="mb-4 text-center text-2xl font-bold">Input 6-Digit Code</h2>
+			<input
+				type="text"
+				bind:value={inputCode}
+				maxlength="6"
+				class="w-full rounded border border-gray-300 p-2 text-center"
+				placeholder="Enter 6-digit code"
+			/>
+			<div class="mt-4 flex justify-between">
+				<button on:click={closeCodePopup} class="rounded-md bg-red-500 px-4 py-2 text-white"
+					>Cancel</button
+				>
+				<button on:click={confirmVoid} class="rounded-md bg-blue-500 px-4 py-2 text-white"
+					>Confirm</button
+				>
+			</div>
+		</div>
+	</div>
+{/if}
 
 {#if isReservePopupVisible}
 	<div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70">
@@ -837,6 +884,17 @@
 			<p class="text-lg">Transaction Time: {new Date().toLocaleTimeString()}</p>
 			<p class="text-lg">Cashier Name: {cashierName}</p>
 			<p class="text-lg">Receipt Number: {orderNumber}</p>
+			
+			<!-- Log the data being displayed -->
+			<script>
+				console.log('Receipt Popup Data:');
+				console.log('Cashier Name:', cashierName);
+				console.log('Order Number:', orderNumber);
+				console.log('Total Ordered Items Price:', totalOrderedItemsPrice);
+				console.log('Voucher Discount:', voucherDiscount);
+				console.log('Payment:', payment);
+			</script>
+
 			<div class="mt-4">
 				<div class="flex justify-between font-semibold">
 					<h2 class="mt-4 text-lg">Items Ordered:</h2>

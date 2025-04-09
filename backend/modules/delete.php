@@ -30,7 +30,7 @@ switch ($requestMethod) {
                     delete_voucher($conn);
                     break;
                 case 'deleteTableOccupancy':
-                    delete_table_occupancy($conn);
+                    deleteTableOccupancy($conn);
                     break;
 
                 case 'deleteReturn':
@@ -208,11 +208,11 @@ function delete_voucher($conn) {
     }
 }
 
-function delete_table_occupancy($conn) {
-    $receipt_number = $_GET['receipt_number'] ?? null;
-    if ($receipt_number) {
-        $stmt = $conn->prepare("DELETE FROM que_orders WHERE que_order_no = ?");
-        $stmt->bind_param("i", $receipt_number);
+function deleteTableOccupancy($conn) {
+    $table_number = $_GET['table_number'] ?? null;
+    if ($table_number) {
+        $stmt = $conn->prepare("DELETE FROM que_orders WHERE table_number = ?");
+        $stmt->bind_param("i", $table_number);
         if ($stmt->execute()) {
             echo json_encode(["success" => true, "message" => "Table occupancy deleted successfully."]);
         } else {

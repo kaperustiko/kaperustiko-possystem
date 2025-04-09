@@ -33,6 +33,8 @@
 
 	let change = 0; // Set default change to 0
 
+	let isConfirmVoidVisible = false; // State for confirmation modal
+
 	async function fetchCashierName() {
 		// Retrieve staff_token from local storage only if not already fetched
 		if (!staffToken) {
@@ -366,7 +368,7 @@
 					)
 				),
 				amountPaid: 0, // Set to 0 if payment is not provided
-				change: orderedItems.length > 0 && payment ? Math.round(parseFloat(payment.replace('₱', '').replace(',', '')) - orderedItems.reduce((total, item) => total + parseFloat(item.order_price.toString().replace('₱', '').replace(',', '')), 0)) : 0, // Set to 0 if no orders or payment
+				change: 0,
 				order_take: isDineIn ? 'Dine In' : 'Take Out', // Ensure this key matches
 				saveQueOrder: true // Add this line to indicate saving to que_orders
 			};
@@ -1011,7 +1013,10 @@
 		const originalDelivered = item.delivered;
 		// Update locally for immediate UI feedback
 		item.delivered = !originalDelivered;
-		
+
+		// Save the updated state to local storage
+		localStorage.setItem('selectedTableItems', JSON.stringify(selectedTableItems));
+
 		try {
 			// Log the item details for debugging
 			console.log('Item details being updated:', item);
@@ -1025,9 +1030,6 @@
 			};
 			
 			console.log('Sending delivery status update:', payload);
-			
-			// Log more information for debugging
-			console.log(`Updating item: ${item.order_name} (${item.order_size}) in receipt ${item.receipt_number}`);
 			
 			const response = await fetch(`http://localhost/kaperustiko-possystem/backend/modules/update.php?action=updateDeliveryStatus`, {
 				method: 'POST',
@@ -1103,74 +1105,11 @@
 				await fetchQueuedOrders();
 			} else {
 				console.error('Server returned error:', result.message);
-				
-				// Handle item not found error by retrying with name alternatives
-				if (result.message && result.message.includes('Item not found in order')) {
-					console.log('Available items:', result.available_items);
-					
-					// Try to find a matching item from the available items
-					if (result.available_items && result.available_items.length > 0) {
-						const availableItem = result.available_items[0];
-						const match = availableItem.match(/^([^-]+) - ([^ ]+)/);
-						
-						if (match) {
-							// Extract the name and size from the first available item
-							const exactName = match[1].trim();
-							const exactSize = match[2].trim();
-							
-							console.log(`Retrying with exact match: ${exactName} - ${exactSize}`);
-							
-							// Retry with exact name
-							const retryPayload = {
-								receipt_number: item.receipt_number,
-								order_name: exactName,
-								order_size: exactSize,
-								delivered: item.delivered ? "1" : "0"
-							};
-							
-							const retryResponse = await fetch(`http://localhost/kaperustiko-possystem/backend/modules/update.php?action=updateDeliveryStatus`, {
-								method: 'POST',
-								headers: {
-									'Content-Type': 'application/json'
-								},
-								body: JSON.stringify(retryPayload)
-							});
-							
-							if (retryResponse.ok) {
-								const retryResult = await retryResponse.json();
-								if (retryResult.success) {
-									showAlert(`Item "${exactName}" marked as delivered`, 'success');
-									
-									// Refresh data
-									await fetchTableOrderDetails(selectedTableDetails.tableNumber);
-									await fetchQueuedOrders();
-									return;
-								}
-							}
-						}
-					}
-					
-					// Create a detailed error message
-					let errorMessage = 'Item not found in order. ';
-					if (result.available_items.length > 0) {
-						errorMessage += `Available items: ${result.available_items.join(', ')}`;
-					}
-					
-					showAlert(errorMessage, 'error');
-					
-					// Refresh table data - there might be a mismatch
-					await fetchTableOrderDetails(selectedTableDetails.tableNumber);
-				} else {
-					showAlert(result.message || 'Failed to update delivery status', 'error');
-				}
-				
-				// Revert the change if update failed
-				item.delivered = originalDelivered;
+				item.delivered = originalDelivered; // Revert to original state
 			}
 		} catch (error) {
 			console.error('Error updating delivery status:', error);
 			item.delivered = originalDelivered; // Revert to original state
-			showAlert('Failed to update delivery status', 'error');
 			
 			// Try to refresh data
 			await fetchTableOrderDetails(selectedTableDetails.tableNumber);
@@ -1230,6 +1169,19 @@
 		} else {
 			console.log('No orders to void.');
 		}
+	}
+
+	function confirmVoidOrders() {
+		isConfirmVoidVisible = true; // Show confirmation modal
+	}
+
+	function voidOrdersConfirmed() {
+		voidQueuedOrders(); // Call the original void function
+		isConfirmVoidVisible = false; // Hide confirmation modal
+	}
+
+	function closeConfirmVoid() {
+		isConfirmVoidVisible = false; // Hide confirmation modal
 	}
 </script>
 
@@ -1947,13 +1899,37 @@
                     class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded focus:outline-none focus:shadow-outline transition duration-200"
                     on:click={closeTableDetailsModal}
                 >
-                    Close
+                    Confirm
                 </button>
                 <button 
                     class="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded focus:outline-none focus:shadow-outline transition duration-200"
-                    on:click={voidQueuedOrders}
+                    on:click={confirmVoidOrders}
                 >
                     Void Que Orders
+                </button>
+            </div>
+        </div>
+    </div>
+{/if}
+
+<!-- Confirmation Modal -->
+{#if isConfirmVoidVisible}
+    <div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70 z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+            <h2 class="text-lg font-bold mb-4">Confirm Void</h2>
+            <p class="mb-4">Are you sure you want to void this order?</p>
+            <div class="flex justify-between">
+                <button 
+                    on:click={voidOrdersConfirmed} 
+                    class="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded focus:outline-none transition duration-200"
+                >
+                    Yes, Void
+                </button>
+                <button 
+                    on:click={closeConfirmVoid} 
+                    class="flex-1 bg-gray-300 hover:bg-gray-400 text-black font-bold py-2 rounded focus:outline-none transition duration-200"
+                >
+                    Cancel
                 </button>
             </div>
         </div>
