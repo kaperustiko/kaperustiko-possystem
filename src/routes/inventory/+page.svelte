@@ -25,7 +25,6 @@
     let imageFile: File | null = null;
     let showOptionsPopup: boolean = false;
     let selectedItem: any;
-    let inputCode: string = '';
     let isCodePopupVisible: boolean = false;
     let action: string;
     let showQuantityPopup: boolean = false;
@@ -33,6 +32,7 @@
     let showEditPopup: boolean = false;
     let editProductData = { code: '', title1: '', title2: '', label: '', price1: '', price2: '', price3: '', qty: '' };
     let showAddProductChoicePopup: boolean = false;
+    let filteredItems: any[] = []; // New array to hold filtered items
 
     // Fetch menu items from the backend
     onMount(async () => {
@@ -50,6 +50,17 @@
         } else {
             console.error('Failed to fetch menu items');
         }
+    });
+
+    // Watch for changes in selectedStatus to filter items
+    $: filteredItems = items.filter(item => {
+        if (!selectedStatus && !searchQuery) return true; // If no status or search query is selected, show all items
+        const matchesStatus = selectedStatus ? 
+            (selectedStatus === 'Out of Stock' && item.qty < 1) ||
+            (selectedStatus === 'Critical' && item.qty < 20 && item.qty > 1) ||
+            (selectedStatus === 'Good' && item.qty > 30) : true; // Filter by selected status
+        const matchesSearch = searchQuery ? item.title1.toLowerCase().includes(searchQuery.toLowerCase()) || item.title2.toLowerCase().includes(searchQuery.toLowerCase()) : true; // Filter by search query
+        return matchesStatus && matchesSearch; // Return true if both conditions are met
     });
 
     // Function to handle form submission
@@ -124,24 +135,6 @@
         }, 2000);
     }
 
-    const confirmAccess = (action: string) => {
-        if (inputCode === '123456') {
-            if (action === 'options') {
-                showOptionsPopup = true; // Show options popup
-            }
-            showAlert('Access successfully granted', 'success');
-        } else {
-            showAlert('Wrong code password', 'error');
-        }
-        inputCode = '';
-        isCodePopupVisible = false;
-    };
-
-    const closeCodePopup = () => {
-        isCodePopupVisible = false;
-        inputCode = '';
-    };
-
     const showOptions = (item: any) => {
         selectedItem = item.code; // Set the selected item code
         console.log('Selected Item Code:', selectedItem); // Debugging log
@@ -178,7 +171,7 @@
         };
 
         // Send the update request to the backend
-        const response = await fetch('http://localhost/kaperustiko-possystem/backend/modules/update.php', {
+        const response = await fetch('http://localhost/kaperustiko-possystem/backend/modules/update_qty.php', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -303,7 +296,6 @@
                     <option value="">All</option>
                     <option value="Out of Stock">Out of Stock</option>
                     <option value="Critical">Critical</option>
-                    <option value="Warning">Warning</option>
                     <option value="Good">Good</option>
                 </select>
             </div>
@@ -327,7 +319,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {#each items as item}
+                    {#each filteredItems as item}
                         <tr class="border-gray-300 hover:bg-gray-100 transition duration-200">
                             <td class="p-4 text-center">
                                 <img src={`foods/${item.image}`} alt={item.title1} class="w-16 h-16 object-cover" />
@@ -434,38 +426,20 @@
     </div>
 {/if}
 
-<!-- Code Input Popup -->
-{#if isCodePopupVisible}
-    <div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70">
-        <div class="w-full max-w-md rounded-lg bg-white p-8 shadow-lg">
-            <h2 class="mb-4 text-center text-2xl font-bold">Input 6-Digit Code</h2>
-            <input
-                type="password"
-                bind:value={inputCode}
-                maxlength="6"
-                class="w-full rounded border border-gray-300 p-2 text-center"
-                placeholder="Enter 6-digit code"
-            />
-            <div class="flex justify-between mt-4">
-                <button on:click={closeCodePopup} class="rounded-md bg-red-500 px-4 py-2 text-white">Cancel</button>
-                <button on:click={(event) => confirmAccess(action)} class="rounded-md bg-blue-500 px-4 py-2 text-white">Confirm</button>
-            </div>
-        </div>
-    </div>
-{/if}
+
 
 <!-- Options Popup -->
-{#if showOptionsPopup}
-    <div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
-        <div class="bg-white p-6 rounded-lg shadow-lg max-w-md w-full">
-            <h2 class="text-lg font-bold mb-4 text-center text-gray-800">Choose an Action</h2>
-            <div class="flex justify-around mb-4">
-                <button class="p-3 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition duration-200 transform hover:scale-105" on:click={addStock}>Add Stock</button>
-                <button class="p-3 bg-yellow-600 text-white rounded-lg shadow hover:bg-yellow-700 transition duration-200 transform hover:scale-105" on:click={editProduct}>Edit Product</button>
-                <button class="p-3 bg-red-600 text-white rounded-lg shadow hover:bg-red-700 transition duration-200 transform hover:scale-105" on:click={deleteProduct}>Delete Product</button>
+{#if isCodePopupVisible}
+    <div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70">
+        <div class="bg-white p-8 rounded-lg shadow-lg max-w-md w-full">
+            <h2 class="text-2xl font-bold mb-6 text-center text-gray-800">Choose an Action</h2>
+            <div class="flex justify-around mb-6">
+                <button class="p-3 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition duration-200 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50" on:click={addStock}>Add Stock</button>
+                <button class="p-3 bg-yellow-600 text-white rounded-lg shadow hover:bg-yellow-700 transition duration-200 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-opacity-50" on:click={editProduct}>Edit Product</button>
+                <button class="p-3 bg-red-600 text-white rounded-lg shadow hover:bg-red-700 transition duration-200 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50" on:click={deleteProduct}>Delete Product</button>
             </div>
             <div class="flex justify-end mt-4">
-                <button type="button" class="mr-2 p-2 bg-gray-300 rounded-lg hover:bg-gray-400 transition duration-200" on:click={() => showOptionsPopup = false}>Close</button>
+                <button type="button" class="w-full p-4 bg-gray-300 rounded-lg hover:bg-gray-400 transition duration-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50" on:click={() => isCodePopupVisible = false}>Close</button>
             </div>
         </div>
     </div>
