@@ -324,9 +324,9 @@
 		waiterCode = '';
 	}
 
-	function saveQueOrder() {
+	async function saveQueOrder() {
 		// Fetch the unique que order number first
-		fetch('http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getTotalQueOrders')
+		fetch('http://localhost/kaperustiko-possystem/backend/modules/getTotalQueOrders')
 			.then((response) => {
 				if (!response.ok) {
 					console.error('Failed to fetch queue order number:', response.statusText);
@@ -424,6 +424,9 @@
 				console.log('Order saved:', data);
 				showAlert(`Order queued successfully by Waiter ${waiterName}`, 'success');
 				
+				// Update the order count for the waiter
+				updateWaiterOrderCount(waiterCode);
+				
 				// After successful order, update table status
 				fetchTableStatus();
 				
@@ -473,6 +476,28 @@
 				console.error('Error:', error);
 				showAlert('Failed to queue order. Please try again.', 'error');
 			});
+		}
+
+		// Function to update the waiter order count
+		async function updateWaiterOrderCount(waiterCode: string) {
+			try {
+				const response = await fetch('http://localhost/kaperustiko-possystem/backend/modules/update_waiter_count.php', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify({ waiter_code: waiterCode })
+				});
+
+				const result = await response.json();
+				if (result.status === 'success') {
+					console.log('Waiter order count updated successfully.');
+				} else {
+					console.error('Failed to update waiter order count:', result.message);
+				}
+			} catch (error) {
+				console.error('Error updating waiter order count:', error);
+			}
 		}
 	}
 

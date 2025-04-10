@@ -10,11 +10,14 @@ function getBestsellers($conn)
     if ($result->num_rows > 0) {
         while ($row = $result->fetch_assoc()) {
             $order_names = json_decode($row['order_names']);
-            foreach ($order_names as $name) {
-                if (isset($order_counts[$name])) {
-                    $order_counts[$name]++;
-                } else {
-                    $order_counts[$name] = 1;
+            // Ensure $order_names is an array before iterating
+            if (is_array($order_names)) {
+                foreach ($order_names as $name) {
+                    if (isset($order_counts[$name])) {
+                        $order_counts[$name]++;
+                    } else {
+                        $order_counts[$name] = 1;
+                    }
                 }
             }
         }
@@ -66,11 +69,14 @@ function getLeastsellers($conn)
     if ($result->num_rows > 0) {
         while ($row = $result->fetch_assoc()) {
             $order_names = json_decode($row['order_names']);
-            foreach ($order_names as $name) {
-                if (isset($order_counts[$name])) {
-                    $order_counts[$name]++;
-                } else {
-                    $order_counts[$name] = 1;
+            // Ensure $order_names is an array before iterating
+            if (is_array($order_names)) {
+                foreach ($order_names as $name) {
+                    if (isset($order_counts[$name])) {
+                        $order_counts[$name]++;
+                    } else {
+                        $order_counts[$name] = 1;
+                    }
                 }
             }
         }
@@ -718,6 +724,25 @@ function getWaiterByCode($conn)
     $stmt->close();
 }
 
+// Function to get waiters with order counts
+function getWaitersWithOrderCounts($conn)
+{
+    $sql = "SELECT us.firstName, us.lastName, COUNT(o.que_order_no) AS order_count
+            FROM `user-staff` us
+            LEFT JOIN que_orders o ON us.waiter_code = o.waiter_code
+            WHERE us.waiter_code IS NOT NULL AND us.waiter_code != ''
+            GROUP BY us.staff_no"; // Group by staff_no to get unique waiters
+    $result = $conn->query($sql);
+    
+    $waiters = [];
+    if ($result->num_rows > 0) {
+        while ($row = $result->fetch_assoc()) {
+            $waiters[] = $row; // Add each waiter to the array
+        }
+    }
+    echo json_encode($waiters); // Return the data as JSON
+}
+
 // Route handling based on request type
 $requestMethod = $_SERVER['REQUEST_METHOD'];
 switch ($requestMethod) {
@@ -810,6 +835,9 @@ switch ($requestMethod) {
                     break;
                 case 'getWaiterByCode':
                     getWaiterByCode($conn);
+                    break;
+                case 'getWaitersWithOrderCounts':
+                    getWaitersWithOrderCounts($conn);
                     break;
                 default:
                     echo json_encode(["status" => "error", "message" => "Invalid action"]);

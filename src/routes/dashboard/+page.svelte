@@ -17,12 +17,12 @@
         datasets: [
             {
                 label: 'Sales',
-                data: [300, 500, 400, 600, 700, 800],
-                backgroundColor: (context: { dataset: { data: number[] }, dataIndex: number }) => {
-                    const value = context.dataset.data[context.dataIndex];
-                    if (value < 400) return 'red'; // Critical
-                    if (value < 600) return 'yellow'; // Warning
-                    return 'green'; // Good
+                data: [300, 500, 400, 600, 700, 800].filter((value): value is number => value !== null),
+                backgroundColor: (ctx: { dataset: { data: number[] }, dataIndex: number }) => {
+                    const value = ctx.dataset.data[ctx.dataIndex];
+                    if (value < 400) return 'red';
+                    if (value < 600) return 'yellow';
+                    return 'green';
                 },
             }
         ]
@@ -85,6 +85,8 @@
         month: number;
         total_amount: number;
     }
+
+    let waiterOrderCounts: { firstName: string; lastName: string; order_count: number }[] = []; // Update the type
 
     onMount(async () => {
         const today = new Date();
@@ -224,6 +226,11 @@
         } catch (error) {
             console.error("Error fetching monthly sales:", error);
         }
+
+        // Fetch waiter order counts from your backend
+        const responseWaiterOrderCounts = await fetch('http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getWaitersWithOrderCounts');
+        const dataWaiterOrderCounts = await responseWaiterOrderCounts.json();
+        waiterOrderCounts = dataWaiterOrderCounts; // Populate the variable with fetched data
     });
 
     function printPage() {
@@ -307,7 +314,7 @@
     <Sidebar />
 
     <!-- Main Content -->
-    <div class="flex-grow p-6 bg-gray-100">
+    <div class="flex-grow p-6 bg-gray-100 overflow-auto">
         <!-- Statistics Cards -->
         <div class="grid grid-cols-8 gap-4 mb-6">
             <div class="bg-white rounded-lg shadow-md p-4 text-center">
@@ -376,7 +383,7 @@
         <div class="grid grid-cols-3 gap-2 mb-6">
             <div class="bg-white rounded-lg shadow-lg p-2">
                 <h3 class="text-center font-bold text-sm">Sales Chart</h3>
-                <Bar data={salesData} />
+               
             </div>
             <div class="bg-white rounded-lg shadow-lg p-2">
                 <div class="flex justify-between items-center mb-2">
@@ -404,13 +411,6 @@
                 <h3 class="text-center font-bold text-sm">Returns Chart</h3>
                 <Bar data={returnData} options={{ responsive: true }} />
             </div>
-        </div>
-        <div class="flex justify-end mb-4 w-full">
-            <input type="text" placeholder="Search..." class="bg-white text-black border border-gray-300 rounded p-2 mr-2 flex-grow shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-           
-            <button class="ml-2 p-2 bg-blue-600 text-white rounded shadow hover:bg-blue-700 transition duration-200" on:click={printPage}>
-                <FontAwesomeIcon icon={faPrint} />
-            </button>
         </div>
         <!-- Tables Section -->
         <div class="grid grid-cols-2 gap-4">
@@ -505,6 +505,33 @@
                     </tbody>
                 </table>
             </div>
+        </div>
+
+        <!-- Add the new table for Waiter Take Order Count Ranking -->
+        <div class="bg-white rounded-lg shadow-lg overflow-hidden mt-4">
+            <div class="bg-gray-800 text-white text-center font-bold p-2">Waiter Take Order Count Ranking</div>
+            <table class="w-full text-left table-fixed border-collapse">
+                <thead class="bg-gray-700 text-white">
+                    <tr>
+                        <th class="p-2 text-center">Waiter Name</th>
+                        <th class="p-2 text-center">Order Count</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white">
+                    {#if waiterOrderCounts.length === 0}
+                        <tr>
+                            <td colspan="2" class="p-2 text-center">No data yet</td>
+                        </tr>
+                    {:else}
+                        {#each waiterOrderCounts as waiter}
+                            <tr class="border-t border-gray-300 hover:bg-gray-200 transition-colors duration-200">
+                                <td class="p-2 text-center">{waiter.firstName} {waiter.lastName}</td>
+                                <td class="p-2 text-center">{waiter.order_count}</td>
+                            </tr>
+                        {/each}
+                    {/if}
+                </tbody>
+            </table>
         </div>
     </div>
 </div>

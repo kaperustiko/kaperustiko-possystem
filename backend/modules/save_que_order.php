@@ -11,7 +11,7 @@ if ($requestMethod === 'POST') {
     
     if (isset($data['saveQueOrder'])) {
 
-        if (!isset($data['date'], $data['time'], $data['cashierName'], $data['itemsOrdered'], $data['totalAmount'], $data['amountPaid'], $data['change'], $data['order_take'], $data['table_number'])) {
+        if (!isset($data['date'], $data['time'], $data['cashierName'], $data['itemsOrdered'], $data['totalAmount'], $data['amountPaid'], $data['change'], $data['order_take'], $data['table_number'], $data['waiterName'], $data['waiterCode'])) {
             echo json_encode(["error" => "Invalid input data"]);
             exit; // Stop execution if input is invalid
         }
@@ -20,6 +20,8 @@ if ($requestMethod === 'POST') {
         $date = $data['date'];
         $time = $data['time'];
         $cashierName = $data['cashierName'];
+        $waiterName = $data['waiterName']; // New variable for waiter name
+        $waiterCode = $data['waiterCode']; // New variable for waiter code
         $itemsOrderedJson = json_encode($data['itemsOrdered']); // Encode modified itemsOrdered
         $totalAmount = $data['totalAmount'];
         $amountPaid = isset($data['amountPaid']) ? $data['amountPaid'] : null; // Allow null if not set
@@ -29,8 +31,8 @@ if ($requestMethod === 'POST') {
         $orderStatus = "pending"; // Default order status
 
         // Insert into que_orders
-        $stmt = $conn->prepare("INSERT INTO que_orders (receipt_number, date, time, items_ordered, total_amount, amount_paid, amount_change, order_take, table_number, order_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("ssssiiisis", $receiptNumber, $date, $time, $itemsOrderedJson, $totalAmount, $amountPaid, $change, $orderTake, $tableNumber, $orderStatus);
+        $stmt = $conn->prepare("INSERT INTO que_orders (receipt_number, date, time, items_ordered, total_amount, amount_paid, amount_change, order_take, table_number, order_status, waiter_name, waiter_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("ssssiiisssss", $receiptNumber, $date, $time, $itemsOrderedJson, $totalAmount, $amountPaid, $change, $orderTake, $tableNumber, $orderStatus, $waiterName, $waiterCode);
 
         // Execute the statement
         if ($stmt->execute()) {
