@@ -187,8 +187,11 @@
 		fetchCashierName(); // Automatically fetch cashier name on mount
 		fetchOrders(); // Fetch orders on component mount
 		updateTime(); // Initial call to set the time
-		const intervalTime = setInterval(updateTime, 1000); // Update time every second
-		fetchReserveTables(); // Fetch reserved tables on component mount
+		const intervalTime = setInterval(() => {
+			fetchQueuedOrders(); // Fetch queued orders every 500ms
+			fetchOrders(); // Fetch orders every 500ms
+			fetchReserveTables(); // Fetch reserved tables every 500ms
+		}, 500); // Set interval to 500ms
 		return () => {
 			clearInterval(intervalTime); // Clear interval on component unmount
 		};

@@ -163,7 +163,7 @@
 	let totalCost = '₱00.00';
 	let selectedCategory = 'All';
 	let payment = '';
-	let quantity = 1;
+	let quantity = 1; // Change this line to ensure quantity is a number
 	let isPopupVisible = false;
 	let isVariationVisible = false;
 	let selectedItem: MenuItem | null = null;
@@ -574,24 +574,21 @@
 		if (existingItemIndex !== -1) {
 			// Item exists, update quantity
 			const existingItem = orderedItems[existingItemIndex];
-			const newQuantity = existingItem.order_quantity + quantity;
+			const newQuantity = existingItem.order_quantity + quantity; // Update quantity
 			const unitPrice = basePrice + totalAddonsPrice;
 			
 			// Create updated order data
 			const updatedOrderData = {
-				...orderData,
-				order_quantity: newQuantity,
+				...existingItem,
+				order_quantity: newQuantity, // Update quantity
 				order_price: unitPrice * newQuantity
 			};
 			
 			// Update state with the new item quantity
 			const updatedItems = [...orderedItems];
-			updatedItems[existingItemIndex] = {
-				...existingItem,
-				order_quantity: newQuantity,
-				order_price: unitPrice * newQuantity
-			};
 			
+			updatedItems[existingItemIndex] = updatedOrderData; // Update the existing item
+
 			// Update locally first
 			orderedItems = updatedItems;
 			localStorage.setItem('orderedItems', JSON.stringify(updatedItems));
@@ -630,6 +627,9 @@
 			const updatedItems = [...orderedItems, orderData];
 			saveOrderToDatabase(orderData, updatedItems);
 		}
+
+		// Reset quantity after adding the item
+		quantity = 1; // Reset to default value
 	}
 	
 	// Helper function to save order to database
@@ -1430,15 +1430,15 @@
                         Take Out
                     </button>
         
-                    {#each ['Void', 'Save Order'] as key, index}
+                    {#each ['Refresh', 'Save Order'] as key, index}
                         <button
                             on:click={() => {
-                                if (key === 'Void') {
-                                    // Handle void action
-                                    voidOrder(index);
+                                if (key === 'Refresh') {
+                                    // Refresh the page
+                                    location.reload(); // This will refresh the page
                                 } else if (key === 'Save Order') {
                                     // Handle save order action
-									handlePlaceOrder();
+                                    handlePlaceOrder();
                                 }
 
                                 handleButtonClick(
