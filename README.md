@@ -2,16 +2,11 @@
 
 Members:
 - Dayandante, Michael D.
-- Biaculo, Richard Angelo
 - Nario, Nandy
 
 Beneficiaries:
 - Rosqueta, Arthur
 - Rosqueta, Maybelouisse
-
-Advisers:
-- Sir John Dominic Pagot
-- Sir Loudel Manaloto
 
 Frontend:
 - SvelteKit
