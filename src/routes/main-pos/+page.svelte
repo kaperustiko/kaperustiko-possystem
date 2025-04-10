@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Sidebar from '../sidebar/+page.svelte';
 	import { orderedItemsStore } from '../../stores/orderedItemsStore';
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { handleButtonClick } from '../../utils/buttonHandler'; // Import the reusable function
 	import { currentInputStore } from '../../stores/currentInputStore'; // Import the store
 	import { WindowsSolid } from 'flowbite-svelte-icons';
@@ -130,18 +130,22 @@
 
 	// Function to fetch orders
 	async function fetchQueuedOrders() {
-		const response = await fetch(
-			'http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getQueOrders'
-		);
-		if (response.ok) {
+		try {
+			const response = await fetch(
+				'http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getQueOrders'
+			);
+			if (!response.ok) {
+				throw new Error(`Failed to fetch queued orders: ${response.statusText}`);
+			}
 			queuedOrders = await response.json(); // Check the response here
 			// Convert basePrice to number for each order
 			queuedOrders.forEach(order => {
 				order.basePrice = Number(order.basePrice); // Convert basePrice to number
 				console.log('Table Number:', order.table_number); // Log the table number for each order
 			});
-		} else {
-			console.error('Failed to fetch queued orders', response.statusText); // Improved error logging
+		} catch (error) {
+			console.error('Error fetching queued orders:', error); // Improved error logging
+			showAlert('Failed to fetch queued orders. Please try again later.', 'error'); // Notify user
 		}
 	}
 
@@ -187,13 +191,16 @@
 		fetchCashierName(); // Automatically fetch cashier name on mount
 		fetchOrders(); // Fetch orders on component mount
 		updateTime(); // Initial call to set the time
-		const intervalTime = setInterval(() => {
-			fetchQueuedOrders(); // Fetch queued orders every 500ms
-			fetchOrders(); // Fetch orders every 500ms
-			fetchReserveTables(); // Fetch reserved tables every 500ms
-		}, 500); // Set interval to 500ms
+		const intervalTime = setInterval(updateTime, 1000); // Update time every second
+		fetchReserveTables(); // Fetch reserved tables on component mount
+
+		// Add event listener for keydown
+		document.addEventListener('keydown', handleKeyDown);
+
+		// Clean up the event listener on component unmount
 		return () => {
 			clearInterval(intervalTime); // Clear interval on component unmount
+			document.removeEventListener('keydown', handleKeyDown);
 		};
 	});
 
@@ -453,6 +460,53 @@
 	}
 
 	let clickedKey: string | null = null; // Variable to track the clicked key
+
+	// Function to handle keydown events
+	function handleKeyDown(event: KeyboardEvent) {
+		if (event.key === 'Escape') {
+			// Close popups when 'Esc' is pressed
+			if (isCodePopupVisible) {
+				closeCodePopup();
+			}
+			if (isReservePopupVisible) {
+				isReservePopupVisible = false;
+			}
+			if (isReservePopup2Visible) {
+				isReservePopup2Visible = false;
+			}
+			if (isReceiptPopupVisible) {
+				isReceiptPopupVisible = false;
+			}
+			if (isCardPopupVisible) {
+				closeCardPopup();
+			}
+		} else if (event.key === 'Enter') {
+			// Confirm actions when 'Enter' is pressed
+			if (isCodePopupVisible) {
+				confirmVoid();
+			}
+			if (isReservePopupVisible) {
+				handleReserveTable();
+			}
+			if (isReceiptPopupVisible) {
+				printReceipt();
+			}
+			// Trigger the button click functionality for placing an order
+			handleButtonClick(
+				'Place Order',
+				0,
+				orderedItems,
+				payment,
+				handleBackspace,
+				handleClear,
+				voidOrder,
+				handlePlaceOrder,
+				handleNumberInput,
+				isDineIn,
+				isTakeOut
+			);
+		}
+	}
 </script>
 
 <div class="flex h-screen">
