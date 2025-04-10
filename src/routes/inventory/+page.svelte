@@ -39,7 +39,6 @@
         const response = await fetch('http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getMenu'); // Update the URL as needed
         if (response.ok) {
             items = await response.json();
-            console.log(items); // Debugging log to check the fetched data
             
             // Sort items by status
             items.sort((a, b) => {
@@ -48,7 +47,6 @@
                 return statusA - statusB;
             });
         } else {
-            console.error('Failed to fetch menu items');
         }
     });
 
@@ -79,8 +77,6 @@
         const file = (event.target as HTMLInputElement).files?.[0];
         if (file) {
             // Handle the Excel file upload logic here
-            console.log('Excel file selected:', file.name);
-            // You can add your upload logic here
         }
     };
 
@@ -102,19 +98,22 @@
                 return;
             }
 
-            const response = await fetch('http://localhost/kaperustiko-possystem/backend/modules/insert.php', {
+            const response = await fetch('http://localhost/kaperustiko-possystem/backend/modules/upload_product.php', {
                 method: 'POST',
                 body: formData
             });
 
-            // Always show success message if the request completes
-            showAlert('Product uploaded successfully', 'success');
-            showPopup = false;
-            
-     
+            // Check if the response is okay
+            if (response.ok) {
+                // Always show success message if the request completes
+                showAlert('Product uploaded successfully', 'success');
+                console.log('Product added:', newProduct); // Log the added product details
+                showPopup = false;
+            } else {
+                showAlert('Failed to upload product', 'error'); // Show error if response is not okay
+            }
 
         } catch (error) {
-            console.error('Error:', error);
             showAlert('Failed to upload product', 'error');
         }
     };
@@ -137,7 +136,6 @@
 
     const showOptions = (item: any) => {
         selectedItem = item.code; // Set the selected item code
-        console.log('Selected Item Code:', selectedItem); // Debugging log
         fetchItemDetails(); // Fetch item details
     };
 
@@ -147,23 +145,16 @@
     };
 
     const fetchQuantityToAdd = async () => {
-        // Log the clicked item code
-        console.log('Clicked Item Code:', selectedItem);
-
         // Fetch the quantity from the backend
         const response = await fetch(`http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getProductQty&code=${selectedItem}`);
         if (response.ok) {
             const data = await response.json();
-            console.log('Current Quantity:', data.qty); // Log the fetched quantity
             quantityToAdd = data.qty; // Update the quantityToAdd variable
         } else {
-            console.error('Failed to fetch quantity');
         }
     };
 
     const confirmAddStock = async () => {
-        console.log('Adding Stock:', quantityToAdd);
-        
         // Prepare data to send
         const data = {
             code: selectedItem, // Use the selected item code
@@ -181,7 +172,6 @@
 
         // Log the API response
         const result = await response.json();
-        console.log("API Response:", result);
 
         // Handle response (e.g., show alert)
         if (response.ok) {
@@ -199,8 +189,6 @@
     };
 
     const fetchItemDetails = async () => {
-      console.log('Fetching item details for code:', selectedItem); // Debugging log
-        console.log(`Fetching item details from URL: http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getItems&code=${selectedItem}`); // Log the URL being fetched
         const response = await fetch(`http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getItems&code=${selectedItem}`, {
             method: 'POST',
             headers: {
@@ -211,7 +199,6 @@
 
         if (response.ok) {
             const itemDetails = await response.json(); // Parse the JSON response
-            console.log("Fetched data for selected item code:", selectedItem, itemDetails); // Log the fetched data
 
             if (itemDetails.length > 0) {
                 editProductData = { ...itemDetails[0] }; // Assuming you want the first item
@@ -241,7 +228,6 @@
             });
 
             const result = await response.json();
-            console.log("API Response:", result);
 
             // Handle response (e.g., show alert)
             if (response.ok) {
@@ -279,8 +265,6 @@
             // Handle success (e.g., show a success message, refresh the product list, etc.)
             showEditPopup = false;
         } else {
-            // Handle error (e.g., show an error message)
-            console.error('Failed to update product');
         }
     }
 </script>
@@ -349,7 +333,6 @@
                             <td class="p-4 text-center">
                                 <div class="flex justify-center">
                                     <button class="p-2 bg-cyan-950 text-white rounded transition duration-200 hover:bg-blue-700 shadow-md" on:click={() => { 
-                                        console.log('Selected Item Code:', item.code); // Log the selected item code
                                         isCodePopupVisible = true; 
                                         action = 'options'; 
                                         selectedItem = item.code; 
