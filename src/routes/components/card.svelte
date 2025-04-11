@@ -17,9 +17,19 @@
     export let label2 = '';
     export let qty = '';
     export let onAdd;
-  </script>
+
+    // Function to adjust font size based on title length
+    /**
+     * @param {string} title - The title to adjust font size for
+     */
+    function adjustFontSize(title) {
+        if (title.length > 30) return 'text-sm'; // Adjust as needed
+        if (title.length > 20) return 'text-md';
+        return 'text-xl';
+    }
+</script>
   
-  <div class="flex items-center justify-center">
+<div class="flex items-center justify-center">
     <div class="relative bg-white shadow-lg rounded-lg w-full h-64 p-5 flex">
       
       <!-- Left Image Section -->
@@ -41,8 +51,8 @@
   
         <!-- Text Section -->
         <div class="space-y-2 text-left">
-          <p class="font-bold text-3xl text-gray-800">{title1}</p>
-          <p class="text-gray-500 text-lg">{title2}</p>
+          <p class={`font-bold ${adjustFontSize(title1)} mt-2 text-gray-800`}>{title1}</p>
+          <p class="text-gray-500 text-sm">{title2}</p>
         </div>
   
         <!-- Price Section -->
@@ -57,5 +67,5 @@
         </Button>
       </div>
     </div>
-  </div>
+</div>
   

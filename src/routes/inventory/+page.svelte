@@ -73,10 +73,36 @@
     };
 
     // Function to handle Excel file upload (to be implemented)
-    const uploadExcelFile = (event: Event) => {
+    const uploadExcelFile = async (event: Event) => {
         const file = (event.target as HTMLInputElement).files?.[0];
         if (file) {
-            // Handle the Excel file upload logic here
+            const formData = new FormData();
+            formData.append('excelFile', file); // Append the file to FormData
+            
+            // Log the FormData contents
+            for (const [key, value] of formData.entries()) {
+                console.log(`${key}:`, value);
+            }
+            // Log specific item details
+            items.forEach(item => {
+                console.log(`Code: ${item.code}, Title: ${item.title1}, Quantity: ${item.qty}`);
+            });
+
+            try {
+                const response = await fetch('http://localhost/kaperustiko-possystem/backend/modules/upload_excel.php', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+                if (result.status === 'success') {
+                    showAlert('Excel file uploaded and database updated successfully', 'success');
+                } else {
+                    showAlert('Failed to upload Excel file: ' + result.message, 'error');
+                }
+            } catch (error) {
+                showAlert('Error uploading Excel file', 'error');
+            }
         }
     };
 
@@ -267,6 +293,28 @@
         } else {
         }
     }
+
+    // Function to handle exporting items as Excel
+    const exportAsExcel = async () => {
+        // Logic to export items to Excel
+        const response = await fetch('http://localhost/kaperustiko-possystem/backend/modules/export.php', {
+            method: 'GET',
+        });
+
+        if (response.ok) {
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'inventory.xlsx'; // Specify the file name
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+        } else {
+            showAlert('Failed to export as Excel', 'error');
+        }
+    };
 </script>
 
 <!-- Main Layout with Sidebar and Content -->
@@ -283,9 +331,14 @@
                     <option value="Good">Good</option>
                 </select>
             </div>
-            <button class="p-2 bg-green-600 text-white rounded shadow-md hover:bg-green-700 transition duration-200" on:click={addProduct}>
-                Add Product
-            </button>
+            <div class="flex items-center">
+                <button class="p-2 bg-green-600 text-white rounded shadow-md hover:bg-green-700 transition duration-200" on:click={addProduct}>
+                    Add Product
+                </button>
+                <button class="ml-2 p-2 bg-blue-600 text-white rounded shadow-md hover:bg-blue-700 transition duration-200" on:click={exportAsExcel}>
+                    Export as Excel
+                </button>
+            </div>
         </div>
         <div class="rounded-lg shadow-lg overflow-auto max-h-[970px]">
             <table class="min-w-full table-auto border-collapse bg-white shadow-md rounded-lg overflow-hidden">
@@ -505,6 +558,7 @@
             </div>
             <div class="flex justify-end mt-4">
                 <button type="button" class="mr-2 p-2 bg-gray-300 rounded" on:click={() => showAddProductChoicePopup = false}>Cancel</button>
+                <button type="button" class="p-2 bg-green-600 text-white rounded" on:click={() => showAddProductChoicePopup = false}>Done</button>
             </div>
         </div>
     </div>

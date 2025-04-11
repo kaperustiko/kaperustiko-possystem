@@ -1242,9 +1242,9 @@
 		<div class="flex flex-col w-full overflow-auto p-4">
 			<!-- Category buttons navigation -->
 			<div class="sticky top-0 z-10 bg-white shadow-md py-3 px-2 mb-4 flex flex-wrap space-x-4 border-b border-gray-200">
-				{#each ['All', 'Beverages', 'Food', 'Dessert', 'Coffee', 'Tea', 'Soda', 'Sandwich', 'Pasta', 'Burger', 'Ulam', 'Rice'] as category}
+				{#each ['All', 'Iced Coffee', 'Hot Coffee', 'Frappe', 'Soda', 'Juice', 'Specialty', 'Appetizer', 'Pasta', 'Salad', 'Sandwich', 'Rice Meal', 'Pizza', 'Soup', 'Steak and Salmon', 'Noodles', 'Breakfast', 'Side Dish'] as category}
 					<button
-						class="rounded-md px-4 py-2 font-bold text-black transition duration-200"
+						class="rounded-md px-4 py-2 mt-1 font-bold text-black transition duration-200"
 						class:bg-cyan-950={selectedCategory === category}
 						class:text-white={selectedCategory === category}
 						class:bg-white={selectedCategory !== category}
@@ -1260,28 +1260,40 @@
 			<div class="mb-4 flex items-center justify-between font-bold text-black">
 				{#if selectedCategory === 'All'}
 					<p>Display All Menu</p>
-				{:else if selectedCategory === 'Beverages'}
-					<p>Display Beverages Menu</p>
-				{:else if selectedCategory === 'Food'}
-					<p>Display Food Menu</p>
-				{:else if selectedCategory === 'Dessert'}
-					<p>Display Dessert Menu</p>
-				{:else if selectedCategory === 'Coffee'}
-					<p>Display Coffee Menu</p>
-				{:else if selectedCategory === 'Tea'}
-					<p>Display Tea Menu</p>
+				{:else if selectedCategory === 'Iced Coffee'}
+					<p>Display Iced Coffee Menu</p>
+				{:else if selectedCategory === 'Hot Coffee'}
+					<p>Display Hot Coffee Menu</p>
+				{:else if selectedCategory === 'Frappe'}
+					<p>Display Frappe Menu</p>
 				{:else if selectedCategory === 'Soda'}
 					<p>Display Soda Menu</p>
-				{:else if selectedCategory === 'Sandwich'}
-					<p>Display Sandwich Menu</p>
-				{:else if selectedCategory === 'Ulam'}
-					<p>Display Ulam Menu</p>
-				{:else if selectedCategory === 'Rice'}
-					<p>Display Rice Menu</p>
+				{:else if selectedCategory === 'Juice'}
+					<p>Display Juice Menu</p>
+				{:else if selectedCategory === 'Specialty'}
+					<p>Display Specialty Menu</p>
+				{:else if selectedCategory === 'Appetizer'}
+					<p>Display Appetizer Menu</p>
 				{:else if selectedCategory === 'Pasta'}
 					<p>Display Pasta Menu</p>
-				{:else if selectedCategory === 'Burger'}
-					<p>Display Burger Menu</p>
+				{:else if selectedCategory === 'Salad'}
+					<p>Display Salad Menu</p>
+				{:else if selectedCategory === 'Sandwich'}
+					<p>Display Sandwich Menu</p>
+				{:else if selectedCategory === 'Rice Meal'}
+					<p>Display Rice Meal Menu</p>
+				{:else if selectedCategory === 'Pizza'}
+					<p>Display Pizza Menu</p>
+				{:else if selectedCategory === 'Soup'}
+					<p>Display Soup Menu</p>
+				{:else if selectedCategory === 'Steak and Salmon'}
+					<p>Display Steak and Salmon Menu</p>
+				{:else if selectedCategory === 'Noodles'}
+					<p>Display Noodles Menu</p>
+				{:else if selectedCategory === 'Breakfast'}
+					<p>Display Breakfast Menu</p>
+				{:else if selectedCategory === 'Side Dish'}
+					<p>Display Side Dish Menu</p>
 				{/if}
 				<p class="mr-4">{currentDay || ''} {currentTime ? '- ' + currentTime : ''}</p>
 			</div>

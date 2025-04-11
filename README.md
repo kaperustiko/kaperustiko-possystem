@@ -28,6 +28,7 @@ Backend:
 
 Modules:
 - npm install
+- composer install
 - npm install tailwindcss
 - npm install flowbite
 - npm install flowbite-svelte
@@ -36,6 +37,7 @@ Modules:
 - npm install @tauri-apps/icons
 - npm install --save-dev @sveltejs/adapter-static
 - npm install --save-dev @tauri-apps/cli
+- composer require phpoffice/phpspreadsheet
 
 - npm install express
 - npm install mysql
