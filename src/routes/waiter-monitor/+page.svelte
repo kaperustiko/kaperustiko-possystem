@@ -1242,7 +1242,7 @@
 		<div class="flex flex-col w-full overflow-auto p-4">
 			<!-- Category buttons navigation -->
 			<div class="sticky top-0 z-10 bg-white shadow-md py-3 px-2 mb-4 flex flex-wrap space-x-4 border-b border-gray-200">
-				{#each ['All', 'Iced Coffee', 'Hot Coffee', 'Frappe', 'Soda', 'Juice', 'Specialty', 'Appetizer', 'Pasta', 'Salad', 'Sandwich', 'Rice Meal', 'Pizza', 'Soup', 'Steak and Salmon', 'Noodles', 'Breakfast', 'Side Dish'] as category}
+				{#each ['All', 'Iced Coffee', 'Hot Coffee', 'Frappe', 'Soda', 'Juice', 'Specialty', 'Appetizer', 'Pasta', 'Salad', 'Sandwich', 'Rice Meal', 'Pizza', 'Soup', 'Steak and Salmon', 'Noodles', 'Breakfast', 'Side Dish', 'Pork', 'Vegetables', 'Fish'] as category}
 					<button
 						class="rounded-md px-4 py-2 mt-1 font-bold text-black transition duration-200"
 						class:bg-cyan-950={selectedCategory === category}
@@ -1294,6 +1294,12 @@
 					<p>Display Breakfast Menu</p>
 				{:else if selectedCategory === 'Side Dish'}
 					<p>Display Side Dish Menu</p>
+				{:else if selectedCategory === 'Pork'}
+					<p>Display Pork Menu</p>
+				{:else if selectedCategory === 'Vegetables'}
+					<p>Display Vegetables Menu</p>
+				{:else if selectedCategory === 'Fish'}
+					<p>Display Fish Menu</p>
 				{/if}
 				<p class="mr-4">{currentDay || ''} {currentTime ? '- ' + currentTime : ''}</p>
 			</div>
@@ -1606,24 +1612,18 @@
 
 			<label for="size" class="mb-2 block text-sm font-medium">Size:</label>
 			<div class="mb-6 flex w-full space-x-4">
-				{#if selectedItem?.label === 'Soda' || selectedItem?.label2 === 'Soda'}
+				{#if selectedItem?.label === 'Iced Coffee' || selectedItem?.label === 'Hot Coffee' || selectedItem?.label === 'Frappe'}
 					<button
-						on:click={() => selectSize('0.25L')}
-						class="flex-1 rounded-md border border-gray-300 p-3 {selectedSize === '0.25L'
+						on:click={() => selectSize('16oz')}
+						class="flex-1 rounded-md border border-gray-300 p-3 {selectedSize === '16oz'
 							? 'bg-blue-500 text-white'
-							: ''}">0.25L</button
+							: ''}">16oz</button
 					>
 					<button
-						on:click={() => selectSize('0.33L')}
-						class="flex-1 rounded-md border border-gray-300 p-3 {selectedSize === '0.33L'
+						on:click={() => selectSize('22oz')}
+						class="flex-1 rounded-md border border-gray-300 p-3 {selectedSize === '22oz'
 							? 'bg-blue-500 text-white'
-							: ''}">0.33L</button
-					>
-					<button
-						on:click={() => selectSize('1.5L')}
-						class="flex-1 rounded-md border border-gray-300 p-3 {selectedSize === '1.5L'
-							? 'bg-blue-500 text-white'
-							: ''}">1.5L</button
+							: ''}">22oz</button
 					>
 				{:else}
 					<button
@@ -1631,18 +1631,6 @@
 						class="flex-1 rounded-md border border-gray-300 p-3 {selectedSize === 'Regular'
 							? 'bg-blue-500 text-white'
 							: ''}">Regular</button
-					>
-					<button
-						on:click={() => selectSize('Large')}
-						class="flex-1 rounded-md border border-gray-300 p-3 {selectedSize === 'Large'
-							? 'bg-blue-500 text-white'
-							: ''}">Large</button
-					>
-					<button
-						on:click={() => selectSize('Family')}
-						class="flex-1 rounded-md border border-gray-300 p-3 {selectedSize === 'Family'
-							? 'bg-blue-500 text-white'
-							: ''}">Family</button
 					>
 				{/if}
 			</div>

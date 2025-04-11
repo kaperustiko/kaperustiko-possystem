@@ -344,34 +344,32 @@
             <table class="min-w-full table-auto border-collapse bg-white shadow-md rounded-lg overflow-hidden">
                 <thead class="bg-gray-800 text-white">
                     <tr>
-                        <th class="p-4 text-left">Product Image</th>
-                        <th class="p-4 text-left">Product Code</th>
-                        <th class="p-4 text-left">Product Name</th>
-                        <th class="p-4 text-left">Label</th>
-                        <th class="p-4 text-center">Price</th>
-                        <th class="p-4 text-center">Qty</th>
-                        <th class="p-4 text-center">Last Stock Date & Time</th>
-                        <th class="p-4 text-center">Actions</th>
-                        <th class="p-4 text-center">Status</th>
+                        <th class="p-4 text-left border-b-2 border-gray-300">Product Image</th>
+                        <th class="p-4 text-left border-b-2 border-gray-300">Code</th>
+                        <th class="p-4 text-left border-b-2 border-gray-300">Product Name</th>
+                        <th class="p-4 text-left border-b-2 border-gray-300">Label</th>
+                        <th class="p-4 text-center border-b-2 border-gray-300">Price</th>
+                        <th class="p-4 text-center border-b-2 border-gray-300">Qty</th>
+                        <th class="p-4 text-center border-b-2 border-gray-300">Last Stock Date & Time</th>
+                        <th class="p-4 text-center border-b-2 border-gray-300">Actions</th>
+                        <th class="p-4 text-center border-b-2 border-gray-300">Status</th>
                     </tr>
                 </thead>
                 <tbody>
                     {#each filteredItems as item}
-                        <tr class="border-gray-300 hover:bg-gray-100 transition duration-200">
-                            <td class="p-4 text-center">
-                                <img src={`foods/${item.image}`} alt={item.title1} class="w-16 h-16 object-cover" />
+                        <tr class="border-b border-gray-300 hover:bg-gray-200 transition duration-200">
+                            <td class="p-2 text-center">
+                                <img src={`foods/${item.image}`} alt={item.title1} class="w-16 h-16 object-cover rounded" />
                             </td>
-                            <td class="p-4 text-left">{item.code}</td>
-                            <td class="p-4">{item.title1} {item.title2}</td>
-                            <td class="p-4">{item.label}</td>
+                            <td class="p-2 text-left font-medium">{item.code}</td>
+                            <td class="p-2 text-left border-b-2">{item.title1} {item.title2}</td>
+                            <td class="p-4 truncate">{item.label}</td>
                             <td class="p-4 text-center">
-                              <ul class="text-gray-700 px-2 mt-1">
-                                <li>Regular: ₱{item.price1}</li>
-                                <li>Large: ₱{item.price2}</li>
-                                <li>Family: ₱{item.price3}</li>
-                              </ul>
+                                <ul class="text-gray-700 px-2 mt-1">
+                                    <li class="font-semibold">₱{item.price1}</li>
+                                </ul>
                             </td>
-                            <td class="p-4 text-center">{item.qty} {item.qty < 2 ? 'pc' : 'pcs'}</td>
+                            <td class="p-4 text-center font-medium">{item.qty} {item.qty < 2 ? 'pc' : 'pcs'}</td>
                             <td class="p-4 text-center">
                                 {new Date(`${item.stock_date} ${item.stock_time}`).toLocaleString('en-US', {
                                     month: 'long',
@@ -385,7 +383,7 @@
                             </td>
                             <td class="p-4 text-center">
                                 <div class="flex justify-center">
-                                    <button class="p-2 bg-cyan-950 text-white rounded transition duration-200 hover:bg-blue-700 shadow-md" on:click={() => { 
+                                    <button class="p-2 bg-cyan-600 text-white rounded transition duration-200 hover:bg-cyan-700 shadow-md" on:click={() => { 
                                         isCodePopupVisible = true; 
                                         action = 'options'; 
                                         selectedItem = item.code; 
@@ -395,7 +393,7 @@
                                 </div>
                             </td>
                             <td class="p-4 text-center">
-                                <span class={`p-2 rounded ${item.qty == 0 || item.qty == '' ? 'bg-black text-white' : item.qty >= 1 && item.qty <= 10 ? 'bg-red-500 text-white' : item.qty > 11 && item.qty <= 20 ? 'bg-yellow-500 text-white' : item.qty > 21 && item.qty <= 1000 ? 'bg-green-500 text-white' : ''}`}>
+                                <span class={`p-2 rounded ${item.qty == 0 || item.qty == '' ? 'bg-red-600 text-white' : item.qty >= 1 && item.qty <= 10 ? 'bg-orange-500 text-white' : item.qty > 11 && item.qty <= 20 ? 'bg-yellow-500 text-white' : item.qty > 21 && item.qty <= 1000 ? 'bg-green-500 text-white' : ''}`}>
                                     {item.qty == 0 || item.qty == '' ? 'Out of Stock' : item.qty >= 1 && item.qty <= 10 ? 'Critical' : item.qty > 11 && item.qty <= 20 ? 'Warning' : item.qty > 21 && item.qty <= 1000 ? 'Good' : ''}
                                 </span>
                             </td>
