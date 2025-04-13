@@ -743,6 +743,63 @@ function getWaitersWithOrderCounts($conn)
     echo json_encode($waiters); // Return the data as JSON
 }
 
+// Function to get waiter code by email
+function getWaiterCodeByEmail($conn)
+{
+    $email = isset($_GET['email']) ? $_GET['email'] : ''; // Retrieve email from query parameters
+    $query = "SELECT waiter_code FROM `user-staff` WHERE email = ?"; // Query to get waiter_code by email
+    $stmt = $conn->prepare($query);
+    $stmt->bind_param("s", $email);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    if ($result->num_rows > 0) {
+        $waiterData = $result->fetch_assoc();
+        echo json_encode($waiterData); // Return the waiter_code as JSON
+    } else {
+        echo json_encode(["error" => "Email not found."]); // Return an error if no waiter is found
+    }
+    
+    $stmt->close();
+}
+
+// Function to get all data of a user
+function getAllDataOfUser($conn)
+{
+    $sql = "SELECT * FROM `user-staff`"; // Query to select all user data
+    $stmt = $conn->prepare($sql);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    if ($result->num_rows > 0) {
+        $userData = $result->fetch_all(MYSQLI_ASSOC); // Fetch all user data as an associative array
+        echo json_encode($userData); // Return user data as JSON
+    } else {
+        echo json_encode(["error" => "User not found."]); // Return an error if no user is found
+    }
+    
+    $stmt->close();
+}
+
+// Function to verify the reset code
+function verifyResetCode($conn, $code) {
+    // Prepare the SQL statement to prevent SQL injection
+    $stmt = $conn->prepare("SELECT * FROM `user-staff` WHERE waiter_code = ?");
+    $stmt->bind_param("s", $code);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    if ($result->num_rows > 0) {
+        // Code exists
+        echo json_encode(["status" => "success", "message" => "Code verified successfully."]);
+    } else {
+        // Code does not exist
+        echo json_encode(["error" => "Invalid code. Please try again."]);
+    }
+
+    $stmt->close();
+}
+
 // Route handling based on request type
 $requestMethod = $_SERVER['REQUEST_METHOD'];
 switch ($requestMethod) {
@@ -838,6 +895,20 @@ switch ($requestMethod) {
                     break;
                 case 'getWaitersWithOrderCounts':
                     getWaitersWithOrderCounts($conn);
+                    break;
+                case 'getWaiterCodeByEmail':
+                    getWaiterCodeByEmail($conn);
+                    break;
+                case 'getAllDataOfUser':
+                    getAllDataOfUser($conn);
+                    break;
+                case 'verifyResetCode':
+                    if (isset($_GET['code'])) {
+                        $code = $_GET['code'];
+                        verifyResetCode($conn, $code);
+                    } else {
+                        echo json_encode(["error" => "Code parameter is missing."]);
+                    }
                     break;
                 default:
                     echo json_encode(["status" => "error", "message" => "Invalid action"]);

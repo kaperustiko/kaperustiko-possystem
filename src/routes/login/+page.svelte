@@ -10,12 +10,20 @@
 	let activeInput = ''; // Track which input is currently active
 	let typingTimeout: NodeJS.Timeout; // Specify the type for typingTimeout
 	let showAccountError = false; // Flag to control the display of account error messages
+	let showResetPasswordPopup = false; // New state variable for reset password popup
+	let resetEmail = ''; // State variable to hold the email for password reset
+	let showCodeInput = false; // New state variable for code input form
+	let showNewPasswordForm = false; // New state variable for new password form
+	let resetCode = ''; // State variable to hold the code entered by the user
+	let newPassword = ''; // State variable for new password
+	let repeatPassword = ''; // State variable for repeated password
 
 	async function handleLogin() {
 		console.log('Logging in with', email, password);
 		
 		isLoading = true; // Set loading state to true
 
+		console.log('Fetching login request'); // Log before login fetch
 		// Send login request to the backend
 		const response = await fetch('http://localhost/kaperustiko-possystem/backend/modules/auth.php', {
 			method: 'POST',
@@ -38,9 +46,10 @@
 			console.log('Login Successful', result.staff_token); // Log the staff_token
 			localStorage.setItem('staff_token', result.staff_token); // Store staff_token in local storage
 			showAlert('Login Successful', 'success'); // Call showAlert with success type
+			
 			setTimeout(() => {
 				isLoading = true; // Set loading state to true
-				window.location.href = '/main-pos'; // Redirect after 3 secondsS
+				window.location.href = '/main-pos'; // Redirect after 3 seconds
 			}, 3000); // 3000 milliseconds = 3 seconds
 			
 			// New lines to open additional windows
@@ -109,6 +118,123 @@
 			alertDiv.remove();
 		}, 3000); // Remove alert after 3 seconds
 	}
+
+	function openResetPasswordPopup() {
+		showResetPasswordPopup = true; // Show the reset password popup
+	}
+
+	function closeResetPasswordPopup() {
+		showResetPasswordPopup = false; // Hide the reset password popup
+	}
+
+	function openCodeInput() {
+		showCodeInput = true; // Show the code input popup
+	}
+
+	function closeCodeInput() {
+		showCodeInput = false; // Hide the code input popup
+	}
+
+	function openNewPasswordForm() {
+		showNewPasswordForm = true; // Show the new password form
+	}
+
+	function closeNewPasswordForm() {
+		showNewPasswordForm = false; // Hide the new password form
+	}
+
+	// New function to handle password reset submission
+	async function handleResetPassword() {
+		console.log('Sending reset code to email'); // Log before reset password fetch
+		console.log('Reset password for', resetEmail);
+		
+		// Fetch waiter code by email
+		console.log('Fetching waiter code by email'); // Log before fetching waiter code
+		const waiterResponse = await fetch(`http://localhost/kaperustiko-possystem/backend/modules/get.php?action=getWaiterCodeByEmail&email=${resetEmail}`);
+		const waiterResult = await waiterResponse.json();
+		if (waiterResult.waiter_code) {
+			console.log('Waiter Code:', waiterResult.waiter_code); // Log the waiter code
+			
+			// New logic to send reset code to the user's email
+			const emailResponse = await fetch('http://localhost/kaperustiko-possystem/backend/modules/sendEmail.php', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({
+					email: resetEmail,
+					waiterCode: waiterResult.waiter_code
+				})
+			});
+			const emailResult = await emailResponse.json();
+			
+			// Log the email result to see its structure
+			console.log('Email Result:', emailResult); // Log the entire email result
+
+			// Check if the email was sent successfully before showing the code input
+			if (emailResult.success) { // Assuming emailResult has a success property
+				
+			} else {
+				closeResetPasswordPopup();
+				openCodeInput();
+			}
+			console.log(emailResult.message); // Log the email sending result
+		} else {
+			console.error('Waiter code not found:', waiterResult.error); // Log any error
+		}
+	}
+
+
+	async function handleVerifyCode() {
+		console.log('Verifying code:', resetCode); // Log the code being verified
+
+		// Send request to verify the reset code
+		const response = await fetch(`http://localhost/kaperustiko-possystem/backend/modules/get.php?action=verifyResetCode&code=${resetCode}`);
+		const result = await response.json(); // Parse JSON response
+
+		if (result.error) {
+			console.error(result.error); // Log error if code is not found
+			showAlert('Invalid code. Please try again.', 'error'); // Show error alert
+			return false; // Return false if verification fails
+		} else if (result.status === "success") { // Check for success status
+			console.log('Code verified:', result); // Log the result if code is valid
+			// Proceed to show the new password form
+			showNewPasswordForm = true; // Show the new password form
+			closeCodeInput(); // Close the code input popup
+			openNewPasswordForm();
+			return true; // Return true if verification is successful
+		}
+	}
+
+	// New function to handle new password submission
+	async function handleSubmitNewPassword() {
+		// New logic to verify the reset code before updating the password
+		const isCodeValid = await handleVerifyCode(); // Call the new function to verify the code
+		if (!isCodeValid) {
+			console.error('Invalid reset code'); // Log if the code is invalid
+			showAlert('Invalid reset code. Please try again.', 'error'); // Show error alert
+			return; // Exit the function if the code is invalid
+		}
+
+		if (newPassword === repeatPassword) {
+			console.log('Submitting new password:', newPassword);
+			const waiterCode = resetCode; // Use resetCode as waiter_code
+
+			const response = await fetch('http://localhost/kaperustiko-possystem/backend/modules/update_password.php', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({ newPassword, waiterCode }) // Include the waiter_code
+			});
+			const result = await response.json();
+			console.log(result.message);
+			window.location.reload();
+		} else {
+			console.error('Passwords do not match');
+		}
+	}
+
 </script>
 
 {#if isLoading} <!-- Conditional rendering for loader -->
@@ -164,10 +290,45 @@
                 {#if showAccountError}<p class="text-red-500 text-sm">{accountError}</p>{/if} <!-- Error message for invalid account -->
             </div>
             <button type="submit" class="w-full bg-blue-900 text-white p-2 rounded hover:bg-sky-600">Log In</button>
-            <p class="mt-4 text-center">Don't Have an Account? 
-                <button type="button" class="text-red-500" on:click={() => window.location.href='/register'}>Register</button>
-            </p>
+            <p class="mt-4 text-center">Don't Have an Account? <button type="button" class="text-red-500" on:click={() => window.location.href='/register'}>Register</button> | Forgot your password? <button type="button" class="text-blue-500" on:click={openResetPasswordPopup}>Reset it here</button></p>
             <p class="mt-2 text-center text-sm text-gray-500">Version 1.0.0 Developed by Team Codeblitz</p>
         </form>
     </div>
 </div>
+
+<!-- Popup for reset password -->
+{#if showResetPasswordPopup}
+<div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+    <div class="bg-white p-8 rounded-lg shadow-lg max-w-sm w-full">
+        <h2 class="text-2xl font-bold mb-4 text-center">Enter Your Email</h2>
+        <p class="text-center mb-4">Please enter your email to receive a reset code.</p>
+        <input type="email" bind:value={resetEmail} placeholder="Enter your email" class="mt-2 block w-full p-3 border border-gray-300 rounded shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+        <button type="button" on:click={() => handleResetPassword()} class="mt-4 w-full bg-blue-900 text-white p-3 rounded hover:bg-blue-700 transition duration-200">Send Reset Code</button>
+        <button type="button" on:click={closeResetPasswordPopup} class="mt-2 w-full text-red-500 hover:underline">Cancel</button>
+    </div>
+</div>
+{/if}
+
+{#if showCodeInput}
+<div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+    <div class="bg-white p-8 rounded-lg shadow-lg max-w-sm w-full">
+        <h2 class="text-2xl font-bold mb-4 text-center">Enter the Code</h2>
+        <p class="text-center mb-4">We sent a code to your email, please put the code here.</p>
+        <input type="text" bind:value={resetCode} placeholder="Enter the code" class="mt-2 block w-full p-3 border border-gray-300 rounded shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+        <button type="button" on:click={handleVerifyCode} class="mt-4 w-full bg-blue-900 text-white p-3 rounded hover:bg-blue-700 transition duration-200">Confirm Identity</button>
+        <button type="button" on:click={closeCodeInput} class="mt-2 w-full text-red-500 hover:underline">Cancel</button>
+    </div>
+</div>
+{/if}
+
+{#if showNewPasswordForm}
+<div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+    <div class="bg-white p-8 rounded-lg shadow-lg max-w-sm w-full">
+        <h2 class="text-2xl font-bold mb-4 text-center">Set New Password</h2>
+        <input type="password" bind:value={newPassword} placeholder="Enter your new password" class="mt-2 block w-full p-3 border border-gray-300 rounded shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+        <input type="password" bind:value={repeatPassword} placeholder="Repeat your new password" class="mt-2 block w-full p-3 border border-gray-300 rounded shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+        <button type="button" on:click={handleSubmitNewPassword} class="mt-4 w-full bg-blue-900 text-white p-3 rounded hover:bg-blue-700 transition duration-200">Submit New Password</button>
+        <button type="button" on:click={closeNewPasswordForm} class="mt-2 w-full text-red-500 hover:underline">Cancel</button>
+    </div>
+</div>
+{/if}

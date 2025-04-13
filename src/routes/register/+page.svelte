@@ -68,7 +68,7 @@
 
             if (jsonResult.status === 'success') {
                 // Show success message with waiter code
-                showAlert(`Registration Successful! Your waiter code is: ${jsonResult.waiter_code}`, 'success');
+                showAlert(`Registration Successful! Your staff code is: ${jsonResult.waiter_code}`, 'success');
                 setTimeout(() => {
                     window.location.href = '/login'; // Redirect to login page after 3 seconds
                 }, 5000); // 5000 milliseconds = 5 seconds (giving extra time to see the waiter code)
@@ -141,17 +141,17 @@
             </div>
             <div class="mb-4">
                 <label for="firstName" class="block text-sm font-medium text-gray-700">First Name</label>
-                <input type="text" id="firstName" bind:value={firstName} required class="mt-1 block w-full p-2 border border-gray-300 rounded" placeholder="Enter your first name"/>
+                <input type="text" id="firstName" bind:value={firstName} required class="mt-1 block w-full p-2 border border-gray-300 rounded" placeholder="Enter your first name" style="text-transform: capitalize;"/>
                 {#if firstNameError}<p class="text-red-500 text-sm">{firstNameError}</p>{/if} <!-- Error message for first name -->
             </div>
             <div class="mb-4">
                 <label for="lastName" class="block text-sm font-medium text-gray-700">Last Name</label>
-                <input type="text" id="lastName" bind:value={lastName} required class="mt-1 block w-full p-2 border border-gray-300 rounded" placeholder="Enter your last name"/>
+                <input type="text" id="lastName" bind:value={lastName} required class="mt-1 block w-full p-2 border border-gray-300 rounded" placeholder="Enter your last name" style="text-transform: capitalize;"/>
                 {#if lastNameError}<p class="text-red-500 text-sm">{lastNameError}</p>{/if} <!-- Error message for last name -->
             </div>
             <div class="mb-4">
                 <label for="middleName" class="block text-sm font-medium text-gray-700">Middle Name</label>
-                <input type="text" id="middleName" bind:value={middleName} class="mt-1 block w-full p-2 border border-gray-300 rounded" placeholder="Enter your middle name (optional)"/>
+                <input type="text" id="middleName" bind:value={middleName} class="mt-1 block w-full p-2 border border-gray-300 rounded" placeholder="Enter your middle name (optional)" style="text-transform: capitalize;"/>
             </div>
             <div class="mb-4">
                 <label for="contactNumber" class="block text-sm font-medium text-gray-700">Contact Number</label>
